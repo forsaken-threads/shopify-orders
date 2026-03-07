@@ -7,10 +7,10 @@ declare(strict_types=1);
  * Register in Shopify admin under Settings → Notifications → Webhooks.
  * Supported topics: orders/create, orders/updated, orders/paid
  *
- * Requests must carry an Authorization header with a pre-shared Bearer token:
- *   Authorization: Bearer <WEBHOOK_BEARER_TOKEN>
+ * Every request is authenticated by verifying the X-Shopify-Hmac-Sha256 header:
+ *   X-Shopify-Hmac-Sha256: <base64(HMAC-SHA256(SHOPIFY_WEBHOOK_SECRET, raw_body))>
  *
- * Set WEBHOOK_BEARER_TOKEN in env.ini (copied from env.ini.example) or as a
+ * Set SHOPIFY_WEBHOOK_SECRET in env.ini (copied from env.ini.example) or as a
  * real environment variable. The value must be kept secret.
  */
 
@@ -25,17 +25,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Method Not Allowed');
 }
 
-// ── Authenticate via Bearer token ────────────────────────────────────────────
-
-if (!verifyBearerToken($config['webhook_bearer_token'])) {
-    http_response_code(401);
-    header('WWW-Authenticate: Bearer realm="Shopify Webhook"');
-    exit('Unauthorized');
-}
-
 // ── Read the payload ──────────────────────────────────────────────────────────
+// Must be read before any other input consumption; also required for HMAC verification.
 
 $rawBody = (string) file_get_contents('php://input');
+
+// ── Authenticate via Shopify HMAC-SHA256 ─────────────────────────────────────
+
+if (!verifyShopifyHmac($config['shopify_webhook_secret'], $rawBody)) {
+    http_response_code(401);
+    exit('Unauthorized');
+}
 $topic   = $_SERVER['HTTP_X_SHOPIFY_TOPIC'] ?? '';
 
 // Acknowledge topics we don't handle with 200 so Shopify stops retrying.
@@ -143,15 +143,15 @@ echo 'OK';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function verifyBearerToken(string $expectedToken): bool
+function verifyShopifyHmac(string $secret, string $rawBody): bool
 {
-    if ($expectedToken === '') {
+    if ($secret === '') {
         return false;
     }
-    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    if (!str_starts_with($authHeader, 'Bearer ')) {
+    $provided = $_SERVER['HTTP_X_SHOPIFY_HMAC_SHA256'] ?? '';
+    if ($provided === '') {
         return false;
     }
-    $provided = substr($authHeader, 7);
-    return hash_equals($expectedToken, $provided);
+    $computed = base64_encode(hash_hmac('sha256', $rawBody, $secret, binary: true));
+    return hash_equals($computed, $provided);
 }
