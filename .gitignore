@@ -2,6 +2,6 @@
 env.ini
 
 # SQLite database
-public/orders.sqlite
-public/orders.sqlite-wal
-public/orders.sqlite-shm
+orders.sqlite
+orders.sqlite-wal
+orders.sqlite-shm

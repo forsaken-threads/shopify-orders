@@ -28,7 +28,7 @@ if (is_file($iniPath)) {
 }
 
 return [
-    'db_path'              => __DIR__ . '/orders.sqlite',
+    'db_path'              => __DIR__ . '/../orders.sqlite',
     'shopify_webhook_secret' => (string) (getenv('SHOPIFY_WEBHOOK_SECRET') ?: ''),
     'auth_user'            => (string) (getenv('AUTH_USER')            ?: 'admin'),
     'auth_password'        => (string) (getenv('AUTH_PASSWORD')        ?: 'changeme'),
