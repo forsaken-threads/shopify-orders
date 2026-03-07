@@ -38,7 +38,9 @@ if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
 }
 
 // Build the absolute callback URL for this script so Shopify can redirect back.
-$scheme      = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+// X-Forwarded-Proto is trusted (proxy headers are considered reliable in this environment).
+$forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+$scheme = $forwardedProto !== '' ? strtolower(explode(',', $forwardedProto)[0]) : ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
 $callbackUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
 
 // ── Step 2: OAuth callback — exchange code for access token ──────────────────
