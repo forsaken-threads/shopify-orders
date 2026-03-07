@@ -46,7 +46,7 @@ function getDb(array $config): PDO
             vendor              TEXT,
             quantity            INTEGER NOT NULL DEFAULT 1,
             price               TEXT    NOT NULL DEFAULT '0.00',
-            custom_order        TEXT
+            custom_brand        TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -54,10 +54,10 @@ function getDb(array $config): PDO
         CREATE INDEX IF NOT EXISTS idx_line_items_order ON order_line_items(order_id);
     SQL);
 
-    // Migration: add custom_order column if it was not present in earlier schema versions.
+    // Migration: add custom_brand column if it was not present in earlier schema versions.
     $cols = array_column($pdo->query('PRAGMA table_info(order_line_items)')->fetchAll(), 'name');
-    if (!in_array('custom_order', $cols, strict: true)) {
-        $pdo->exec('ALTER TABLE order_line_items ADD COLUMN custom_order TEXT');
+    if (!in_array('custom_brand', $cols, strict: true)) {
+        $pdo->exec('ALTER TABLE order_line_items ADD COLUMN custom_brand TEXT');
     }
 
     return $pdo;

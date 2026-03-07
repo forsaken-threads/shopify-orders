@@ -109,18 +109,18 @@ try {
 
     $lineStmt = $db->prepare(<<<'SQL'
         INSERT INTO order_line_items
-            (order_id, shopify_line_item_id, title, variant_title, sku, vendor, quantity, price, custom_order)
+            (order_id, shopify_line_item_id, title, variant_title, sku, vendor, quantity, price, custom_brand)
         VALUES
-            (:order_id, :line_item_id, :title, :variant_title, :sku, :vendor, :quantity, :price, :custom_order)
+            (:order_id, :line_item_id, :title, :variant_title, :sku, :vendor, :quantity, :price, :custom_brand)
     SQL);
 
     foreach ($order['line_items'] ?? [] as $item) {
-        // Extract custom.order from the line item's properties array.
+        // Extract custom.brand from the line item's properties array.
         // Shopify sends properties as [{name: "...", value: "..."}, ...].
-        $customOrder = null;
+        $customBrand = null;
         foreach ($item['properties'] ?? [] as $prop) {
-            if (($prop['name'] ?? '') === 'custom.order') {
-                $customOrder = ($prop['value'] !== '' && $prop['value'] !== null)
+            if (($prop['name'] ?? '') === 'custom.brand') {
+                $customBrand = ($prop['value'] !== '' && $prop['value'] !== null)
                     ? (string) $prop['value']
                     : null;
                 break;
@@ -136,7 +136,7 @@ try {
             ':vendor'        => $item['vendor']         ?? null,
             ':quantity'      => (int)    ($item['quantity'] ?? 1),
             ':price'         => (string) ($item['price']    ?? '0.00'),
-            ':custom_order'  => $customOrder,
+            ':custom_brand'  => $customBrand,
         ]);
     }
 

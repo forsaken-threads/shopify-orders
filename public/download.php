@@ -8,7 +8,7 @@ declare(strict_types=1);
  *
  * CSV columns:
  *   Order Number | Order Date | Customer Name | Customer Email |
- *   SKU | Product | Variant | Vendor | Quantity | Unit Price | Line Total
+ *   SKU | Product | Variant | Vendor | Quantity | Unit Price | Line Total | Currency | Custom Brand
  */
 
 $config = require __DIR__ . '/config.php';
@@ -73,7 +73,8 @@ fputcsv($out, [
     'Unit Price',
     'Line Total',
     'Currency',
-]);
+    'Custom Brand',
+], separator: ',', enclosure: '"', escape: '\\');
 
 foreach ($lineItems as $item) {
     $unitPrice = (float) $item['price'];
@@ -93,7 +94,8 @@ foreach ($lineItems as $item) {
         number_format($unitPrice, 2, '.', ''),
         $lineTotal,
         $order['currency'],
-    ]);
+        $item['custom_brand']  ?? '',
+    ], separator: ',', enclosure: '"', escape: '\\');
 }
 
 fclose($out);
