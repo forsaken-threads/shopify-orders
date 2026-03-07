@@ -7,8 +7,11 @@ declare(strict_types=1);
  * Register in Shopify admin under Settings → Notifications → Webhooks.
  * Supported topics: orders/create, orders/updated, orders/paid
  *
- * Shopify signs every request with HMAC-SHA256 of the raw body using the
- * webhook secret. We verify this before touching the database.
+ * Requests must carry an Authorization header with a pre-shared Bearer token:
+ *   Authorization: Bearer <WEBHOOK_BEARER_TOKEN>
+ *
+ * Set WEBHOOK_BEARER_TOKEN in env.ini (copied from env.ini.example) or as a
+ * real environment variable. The value must be kept secret.
  */
 
 $config = require __DIR__ . '/config.php';
@@ -22,16 +25,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Method Not Allowed');
 }
 
-// ── Read and verify the payload ───────────────────────────────────────────────
+// ── Authenticate via Bearer token ────────────────────────────────────────────
 
-$rawBody    = (string) file_get_contents('php://input');
-$hmacHeader = $_SERVER['HTTP_X_SHOPIFY_HMAC_SHA256'] ?? '';
-$topic      = $_SERVER['HTTP_X_SHOPIFY_TOPIC']       ?? '';
-
-if (!verifyShopifyHmac($config['webhook_secret'], $rawBody, $hmacHeader)) {
+if (!verifyBearerToken($config['webhook_bearer_token'])) {
     http_response_code(401);
+    header('WWW-Authenticate: Bearer realm="Shopify Webhook"');
     exit('Unauthorized');
 }
+
+// ── Read the payload ──────────────────────────────────────────────────────────
+
+$rawBody = (string) file_get_contents('php://input');
+$topic   = $_SERVER['HTTP_X_SHOPIFY_TOPIC'] ?? '';
 
 // Acknowledge topics we don't handle with 200 so Shopify stops retrying.
 $handled = ['orders/create', 'orders/updated', 'orders/paid'];
@@ -138,11 +143,15 @@ echo 'OK';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function verifyShopifyHmac(string $secret, string $rawBody, string $hmacHeader): bool
+function verifyBearerToken(string $expectedToken): bool
 {
-    if ($hmacHeader === '') {
+    if ($expectedToken === '') {
         return false;
     }
-    $calculated = base64_encode(hash_hmac('sha256', $rawBody, $secret, binary: true));
-    return hash_equals($calculated, $hmacHeader);
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    if (!str_starts_with($authHeader, 'Bearer ')) {
+        return false;
+    }
+    $provided = substr($authHeader, 7);
+    return hash_equals($expectedToken, $provided);
 }
