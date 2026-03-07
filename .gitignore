@@ -1,6 +1,9 @@
 # Local environment configuration — never commit real credentials
 env.ini
 
+# Shopify Admin API access token — written by install.php, never commit
+shopify.ini
+
 # SQLite database
 orders.sqlite
 orders.sqlite-wal

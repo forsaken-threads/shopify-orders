@@ -59,13 +59,20 @@ if (!is_array($order) || empty($order['id'])) {
 // key=brand). It is NOT part of the order payload, so we pull it here before
 // persisting.  Results are keyed by product_id (string).
 //
-// If Admin API credentials are not configured the map is left empty and we
-// fall back to reading the value from line item properties (legacy path).
+// Requires SHOPIFY_API_KEY, SHOPIFY_API_SECRET, and SHOPIFY_SHOP_DOMAIN in
+// env.ini, plus a valid token in shopify.ini (written by install.php).
+// If any of those are missing the map is left empty and we fall back to
+// reading the value from line item properties (legacy path).
 
 /** @var array<string,string|null> $brandByProductId */
 $brandByProductId = [];
 
-if ($config['shopify_access_token'] !== '' && $config['shopify_shop_domain'] !== '') {
+$adminApiReady = $config['shopify_api_key']    !== ''
+              && $config['shopify_api_secret']  !== ''
+              && $config['shopify_shop_domain'] !== ''
+              && $config['shopify_access_token'] !== '';
+
+if ($adminApiReady) {
     $productIds = [];
     foreach ($order['line_items'] ?? [] as $item) {
         $pid = (string) ($item['product_id'] ?? '');
