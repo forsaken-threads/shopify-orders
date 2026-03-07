@@ -115,7 +115,7 @@ try {
     SQL);
 
     foreach ($order['line_items'] ?? [] as $item) {
-        // Extract custom.order from the line item's properties array.
+        // Extract custom.brand from the line item's properties array.
         // Shopify sends properties as [{name: "...", value: "..."}, ...].
         $customBrand = null;
         foreach ($item['properties'] ?? [] as $prop) {
