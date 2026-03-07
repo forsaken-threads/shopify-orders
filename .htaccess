@@ -1,0 +1,21 @@
+# ── Security ──────────────────────────────────────────────────────────────────
+
+# Block direct browser access to the SQLite database and PHP includes.
+<FilesMatch "\.(sqlite|sqlite3|db)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "^(config|db|auth)\.php$">
+    Require all denied
+</FilesMatch>
+
+# Only the three entry-points should be publicly reachable.
+# (orders.php and download.php enforce their own Basic Auth.)
+
+# ── Hardening ──────────────────────────────────────────────────────────────────
+
+# Don't expose directory listings.
+Options -Indexes
+
+# Suppress the Server header version (Apache 2.4+ only).
+ServerTokens Prod
