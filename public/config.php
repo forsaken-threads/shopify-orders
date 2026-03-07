@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Copy env.ini.example → env.ini at the project root and fill in values.
  * Never commit env.ini.
  *
- * WEBHOOK_BEARER_TOKEN  Pre-shared Bearer token for authenticating webhook requests.
+ * SHOPIFY_WEBHOOK_SECRET  Shopify-provided secret for verifying X-Shopify-Hmac-Sha256.
  * AUTH_USER             Username for the orders and download pages.
  * AUTH_PASSWORD         Password for the orders and download pages.
  */
@@ -29,7 +29,7 @@ if (is_file($iniPath)) {
 
 return [
     'db_path'              => __DIR__ . '/orders.sqlite',
-    'webhook_bearer_token' => (string) (getenv('WEBHOOK_BEARER_TOKEN') ?: ''),
+    'shopify_webhook_secret' => (string) (getenv('SHOPIFY_WEBHOOK_SECRET') ?: ''),
     'auth_user'            => (string) (getenv('AUTH_USER')            ?: 'admin'),
     'auth_password'        => (string) (getenv('AUTH_PASSWORD')        ?: 'changeme'),
 ];
