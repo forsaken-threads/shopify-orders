@@ -45,13 +45,20 @@ function getDb(array $config): PDO
             sku                 TEXT,
             vendor              TEXT,
             quantity            INTEGER NOT NULL DEFAULT 1,
-            price               TEXT    NOT NULL DEFAULT '0.00'
+            price               TEXT    NOT NULL DEFAULT '0.00',
+            custom_brand        TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_orders_created  ON orders(shopify_created_at);
         CREATE INDEX IF NOT EXISTS idx_line_items_order ON order_line_items(order_id);
     SQL);
+
+    // Migration: add custom_brand column if it was not present in earlier schema versions.
+    $cols = array_column($pdo->query('PRAGMA table_info(order_line_items)')->fetchAll(), 'name');
+    if (!in_array('custom_brand', $cols, strict: true)) {
+        $pdo->exec('ALTER TABLE order_line_items ADD COLUMN custom_brand TEXT');
+    }
 
     return $pdo;
 }
