@@ -1,0 +1,7 @@
+# Local environment configuration — never commit real credentials
+env.ini
+
+# SQLite database
+public/orders.sqlite
+public/orders.sqlite-wal
+public/orders.sqlite-shm
