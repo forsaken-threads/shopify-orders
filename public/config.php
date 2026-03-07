@@ -28,8 +28,11 @@ if (is_file($iniPath)) {
 }
 
 return [
-    'db_path'              => __DIR__ . '/../orders.sqlite',
+    'db_path'                => __DIR__ . '/../orders.sqlite',
     'shopify_webhook_secret' => (string) (getenv('SHOPIFY_WEBHOOK_SECRET') ?: ''),
-    'auth_user'            => (string) (getenv('AUTH_USER')            ?: 'admin'),
-    'auth_password'        => (string) (getenv('AUTH_PASSWORD')        ?: 'changeme'),
+    'auth_user'              => (string) (getenv('AUTH_USER')              ?: 'admin'),
+    'auth_password'          => (string) (getenv('AUTH_PASSWORD')          ?: 'changeme'),
+    'shopify_access_token'   => (string) (getenv('SHOPIFY_ACCESS_TOKEN')   ?: ''),
+    'shopify_shop_domain'    => (string) (getenv('SHOPIFY_SHOP_DOMAIN')    ?: ''),
+    'shopify_api_version'    => (string) (getenv('SHOPIFY_API_VERSION')    ?: '2025-01'),
 ];

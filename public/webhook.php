@@ -54,6 +54,37 @@ if (!is_array($order) || empty($order['id'])) {
     exit('Unprocessable Entity');
 }
 
+// ── Fetch custom.brand metafield for each product via Shopify Admin API ───────
+// The custom.brand value lives on the product as a metafield (namespace=custom,
+// key=brand). It is NOT part of the order payload, so we pull it here before
+// persisting.  Results are keyed by product_id (string).
+//
+// If Admin API credentials are not configured the map is left empty and we
+// fall back to reading the value from line item properties (legacy path).
+
+/** @var array<string,string|null> $brandByProductId */
+$brandByProductId = [];
+
+if ($config['shopify_access_token'] !== '' && $config['shopify_shop_domain'] !== '') {
+    $productIds = [];
+    foreach ($order['line_items'] ?? [] as $item) {
+        $pid = (string) ($item['product_id'] ?? '');
+        if ($pid !== '' && !isset($productIds[$pid])) {
+            $productIds[$pid] = true;
+        }
+    }
+
+    foreach (array_keys($productIds) as $productId) {
+        $brand = fetchProductBrand(
+            $config['shopify_shop_domain'],
+            $config['shopify_access_token'],
+            $config['shopify_api_version'],
+            $productId
+        );
+        $brandByProductId[$productId] = $brand;
+    }
+}
+
 // ── Persist to SQLite ─────────────────────────────────────────────────────────
 
 $db = getDb($config);
@@ -115,15 +146,21 @@ try {
     SQL);
 
     foreach ($order['line_items'] ?? [] as $item) {
-        // Extract custom.brand from the line item's properties array.
-        // Shopify sends properties as [{name: "...", value: "..."}, ...].
-        $customBrand = null;
-        foreach ($item['properties'] ?? [] as $prop) {
-            if (($prop['name'] ?? '') === 'custom.brand') {
-                $customBrand = ($prop['value'] !== '' && $prop['value'] !== null)
-                    ? (string) $prop['value']
-                    : null;
-                break;
+        // Prefer the value fetched from the product metafield (custom.brand).
+        // Fall back to line item properties for backwards compatibility.
+        $productId   = (string) ($item['product_id'] ?? '');
+        $customBrand = isset($brandByProductId[$productId])
+            ? $brandByProductId[$productId]
+            : null;
+
+        if ($customBrand === null) {
+            foreach ($item['properties'] ?? [] as $prop) {
+                if (($prop['name'] ?? '') === 'custom.brand') {
+                    $customBrand = ($prop['value'] !== '' && $prop['value'] !== null)
+                        ? (string) $prop['value']
+                        : null;
+                    break;
+                }
             }
         }
 
@@ -155,6 +192,65 @@ http_response_code(200);
 echo 'OK';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the custom.brand metafield value for a Shopify product.
+ *
+ * Calls:
+ *   GET https://{shop}/admin/api/{version}/products/{product_id}/metafields.json
+ *       ?namespace=custom&key=brand
+ *
+ * Returns the metafield value string, or null if not found / on error.
+ */
+function fetchProductBrand(
+    string $shopDomain,
+    string $accessToken,
+    string $apiVersion,
+    string $productId
+): ?string {
+    $url = sprintf(
+        'https://%s/admin/api/%s/products/%s/metafields.json?namespace=custom&key=brand',
+        $shopDomain,
+        rawurlencode($apiVersion),
+        rawurlencode($productId)
+    );
+
+    $context = stream_context_create([
+        'http' => [
+            'method'        => 'GET',
+            'header'        => implode("\r\n", [
+                'X-Shopify-Access-Token: ' . $accessToken,
+                'Accept: application/json',
+            ]),
+            'timeout'       => 10,
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $response = @file_get_contents($url, false, $context);
+
+    if ($response === false) {
+        error_log(sprintf('[shopify-webhook] fetchProductBrand: HTTP request failed for product %s', $productId));
+        return null;
+    }
+
+    // Check for a non-2xx response code from $http_response_header.
+    $statusLine = $http_response_header[0] ?? '';
+    if (!preg_match('#HTTP/\S+\s+(2\d{2})#', $statusLine)) {
+        error_log(sprintf('[shopify-webhook] fetchProductBrand: unexpected status "%s" for product %s', $statusLine, $productId));
+        return null;
+    }
+
+    try {
+        $data = json_decode($response, associative: true, flags: JSON_THROW_ON_ERROR);
+    } catch (\JsonException $e) {
+        error_log(sprintf('[shopify-webhook] fetchProductBrand: invalid JSON for product %s: %s', $productId, $e->getMessage()));
+        return null;
+    }
+
+    $value = $data['metafields'][0]['value'] ?? null;
+    return ($value !== null && $value !== '') ? (string) $value : null;
+}
 
 function verifyShopifyHmac(string $secret, string $rawBody): bool
 {
