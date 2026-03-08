@@ -100,7 +100,6 @@ $pdo->exec(<<<'SQL'
 
     CREATE INDEX IF NOT EXISTS idx_products_shopify_id      ON products(shopify_product_id);
     CREATE INDEX IF NOT EXISTS idx_products_is_bundle       ON products(is_bundle);
-    CREATE INDEX IF NOT EXISTS idx_products_deleted_at      ON products(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_bundle_components_bundle ON bundle_components(bundle_product_id);
 SQL);
 
@@ -115,5 +114,9 @@ try {
 } catch (\PDOException $e) {
     // Column already exists — nothing to do.
 }
+
+// Create the deleted_at index after the column is guaranteed to exist (whether
+// the table was just created or the column was just added via ALTER TABLE above).
+$pdo->exec('CREATE INDEX IF NOT EXISTS idx_products_deleted_at ON products(deleted_at)');
 
 echo "Migration complete.\n";
