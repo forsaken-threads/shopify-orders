@@ -6,12 +6,13 @@ declare(strict_types=1);
  *
  * GET /api/product-search.php?q=<search_term>
  *
- * Returns a JSON array of up to 20 active products whose title contains
- * the search term (case-insensitive, accent-insensitive full-string matching).
+ * Returns a JSON array of up to 20 active products whose normalized_title
+ * contains the search term (case-insensitive, accent-insensitive matching).
  *
- * Matching is done in PHP after fetching all active product titles so that
- * accent normalization (é→e, ô→o, ā→a, etc.) works correctly — SQLite's
- * built-in LOWER() and LIKE only handle ASCII characters.
+ * The search needle is normalized in PHP via normalizeTitle() before being
+ * passed to a SQL LIKE query against the pre-computed normalized_title column.
+ * This avoids loading all product titles into memory and lets SQLite do the
+ * filtering efficiently via the idx_products_normalized_title index.
  *
  * Requires HTTP Basic Auth (same credentials as the web UI).
  *
@@ -19,9 +20,10 @@ declare(strict_types=1);
  *   [{ "shopify_product_id": "...", "title": "...", "vendor": "..." }, ...]
  */
 
-$config = require __DIR__ . '/../config.php';
+$config = require __DIR__ . '/../../app/config.php';
 require __DIR__ . '/../auth.php';
-require __DIR__ . '/../db.php';
+require __DIR__ . '/../../app/db.php';
+require __DIR__ . '/../../app/normalize.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
 
@@ -34,43 +36,18 @@ if (mb_strlen($q) < 2) {
     exit;
 }
 
-/**
- * Strip diacritics and fold to lowercase ASCII for accent-insensitive matching.
- * e.g. "Le Falconé Jawhara" → "le falcone jawhara"
- */
-function normalizeForSearch(string $s): string
-{
-    // Decompose characters into base + combining marks, then drop the marks.
-    $normalized = normalizer_normalize($s, Normalizer::FORM_D);
-    if ($normalized === false) {
-        return mb_strtolower($s);
-    }
-    $s = $normalized;
-    // Remove combining diacritical marks (U+0300–U+036F).
-    $s = preg_replace('/[\x{0300}-\x{036F}]/u', '', $s) ?? $s;
-    return mb_strtolower($s);
-}
-
-$needle = normalizeForSearch($q);
+$needle = '%' . normalizeTitle($q) . '%';
 
 $db   = getDb($config);
 $stmt = $db->prepare(
     "SELECT shopify_product_id, title, vendor
      FROM   products
-     WHERE  status = 'active'
-       AND  deleted_at IS NULL
-     ORDER BY title"
+     WHERE  status           = 'active'
+       AND  deleted_at       IS NULL
+       AND  normalized_title LIKE :needle
+     ORDER  BY title
+     LIMIT  20"
 );
-$stmt->execute();
+$stmt->execute([':needle' => $needle]);
 
-$results = [];
-foreach ($stmt->fetchAll() as $row) {
-    if (mb_strpos(normalizeForSearch($row['title']), $needle) !== false) {
-        $results[] = $row;
-        if (count($results) === 20) {
-            break;
-        }
-    }
-}
-
-echo json_encode($results);
+echo json_encode($stmt->fetchAll());

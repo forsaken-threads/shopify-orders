@@ -22,8 +22,10 @@ declare(strict_types=1);
  * scripts/sync-products.php is run to populate that column.
  */
 
-$config = require __DIR__ . '/../config.php';
-require __DIR__ . '/../db.php';
+$config = require __DIR__ . '/../../app/config.php';
+require __DIR__ . '/../../app/db.php';
+require __DIR__ . '/../../app/webhook.php';
+require __DIR__ . '/../../app/normalize.php';
 
 // ── Validate HTTP method ──────────────────────────────────────────────────────
 
@@ -102,11 +104,12 @@ foreach ($product['metafields'] ?? [] as $mf) {
 try {
     $db->prepare(<<<'SQL'
         INSERT INTO products
-            (shopify_product_id, title, vendor, status, custom_brand, is_bundle, raw_data, shopify_created_at)
+            (shopify_product_id, title, normalized_title, vendor, status, custom_brand, is_bundle, raw_data, shopify_created_at)
         VALUES
-            (:shopify_product_id, :title, :vendor, :status, :custom_brand, :is_bundle, :raw_data, :shopify_created_at)
+            (:shopify_product_id, :title, :normalized_title, :vendor, :status, :custom_brand, :is_bundle, :raw_data, :shopify_created_at)
         ON CONFLICT(shopify_product_id) DO UPDATE SET
             title              = excluded.title,
+            normalized_title   = excluded.normalized_title,
             vendor             = excluded.vendor,
             status             = excluded.status,
             custom_brand       = CASE
@@ -120,6 +123,7 @@ try {
     SQL)->execute([
         ':shopify_product_id'  => $shopifyProductId,
         ':title'               => $title,
+        ':normalized_title'    => normalizeTitle($title),
         ':vendor'              => $vendor,
         ':status'              => $status,
         ':custom_brand'        => $customBrand,
@@ -138,23 +142,3 @@ webhookLog(dirname(__DIR__, 2) . '/logs/products.log', $title, $topic);
 http_response_code(200);
 echo 'OK';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function webhookLog(string $file, string $identifier, string $topic): void
-{
-    $line = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $identifier, $topic);
-    @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
-}
-
-function verifyShopifyHmac(string $secret, string $rawBody): bool
-{
-    if ($secret === '') {
-        return false;
-    }
-    $provided = $_SERVER['HTTP_X_SHOPIFY_HMAC_SHA256'] ?? '';
-    if ($provided === '') {
-        return false;
-    }
-    $computed = base64_encode(hash_hmac('sha256', $rawBody, $secret, binary: true));
-    return hash_equals($computed, $provided);
-}

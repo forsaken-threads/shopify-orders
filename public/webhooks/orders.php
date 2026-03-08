@@ -14,8 +14,9 @@ declare(strict_types=1);
  * once to populate the table, then keep it current via the products webhook.
  */
 
-$config = require __DIR__ . '/../config.php';
-require __DIR__ . '/../db.php';
+$config = require __DIR__ . '/../../app/config.php';
+require __DIR__ . '/../../app/db.php';
+require __DIR__ . '/../../app/webhook.php';
 
 // ── Validate HTTP method ──────────────────────────────────────────────────────
 
@@ -131,9 +132,17 @@ if (!empty($productIds)) {
 $shopifyId    = (string) $order['id'];
 $orderNumber  = (string) ($order['order_number'] ?? $order['name'] ?? $order['id']);
 
-// Derive local status from Shopify's fulfillment_status so orders that are
-// already fulfilled when first received are not stored as pending.
-$initialStatus = ($order['fulfillment_status'] ?? null) === 'fulfilled' ? 'fulfilled' : 'pending';
+// Derive local status from Shopify's financial/fulfillment status so orders
+// that are already fulfilled or fully refunded when first received are not
+// stored as pending.
+$financialStatus = $order['financial_status'] ?? '';
+if ($financialStatus === 'refunded') {
+    $initialStatus = 'archived';
+} elseif (($order['fulfillment_status'] ?? null) === 'fulfilled') {
+    $initialStatus = 'fulfilled';
+} else {
+    $initialStatus = 'pending';
+}
 $customerName = trim(
     ($order['customer']['first_name'] ?? '') . ' ' .
     ($order['customer']['last_name']  ?? '')
@@ -175,6 +184,14 @@ try {
         ':raw_data'       => $rawBody,
         ':created_at'     => $createdAt,
     ]);
+
+    // If the order is now fully refunded, archive it regardless of any existing
+    // status (the ON CONFLICT clause above intentionally preserves status on
+    // re-delivery, so we handle this override explicitly).
+    if ($financialStatus === 'refunded') {
+        $db->prepare("UPDATE orders SET status = 'archived' WHERE shopify_order_id = ? AND status != 'archived'")
+            ->execute([$shopifyId]);
+    }
 
     // Fetch the internal ID reliably.
     $idStmt = $db->prepare('SELECT id FROM orders WHERE shopify_order_id = ?');
@@ -247,23 +264,3 @@ try {
 http_response_code(200);
 echo 'OK';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function webhookLog(string $file, string $identifier, string $topic): void
-{
-    $line = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $identifier, $topic);
-    @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
-}
-
-function verifyShopifyHmac(string $secret, string $rawBody): bool
-{
-    if ($secret === '') {
-        return false;
-    }
-    $provided = $_SERVER['HTTP_X_SHOPIFY_HMAC_SHA256'] ?? '';
-    if ($provided === '') {
-        return false;
-    }
-    $computed = base64_encode(hash_hmac('sha256', $rawBody, $secret, binary: true));
-    return hash_equals($computed, $provided);
-}

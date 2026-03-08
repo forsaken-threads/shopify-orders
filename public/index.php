@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $pageTitle  = 'Home - Utility App';
 $activePage = null;
-require __DIR__ . '/partials/header.php';
+require __DIR__ . '/../app/partials/header.php';
 ?>
 <style>
     .home-main {
@@ -96,4 +96,4 @@ require __DIR__ . '/partials/header.php';
     </div>
 </main>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php require __DIR__ . '/../app/partials/footer.php'; ?>

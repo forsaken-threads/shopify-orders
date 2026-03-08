@@ -1,37 +1,11 @@
 <?php
 declare(strict_types=1);
 
-$config = require __DIR__ . '/config.php';
-require __DIR__ . '/db.php';
+$config = require __DIR__ . '/../app/config.php';
+require __DIR__ . '/../app/db.php';
 require __DIR__ . '/auth.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
-
-// ── AJAX: Archive action ───────────────────────────────────────────────────────
-// POST ?action=archive  body: id=<int>
-// Transitions a pending order to archived status.
-// Returns JSON {ok:true} or {ok:false,error:"..."}.
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'archive') {
-    header('Content-Type: application/json');
-
-    $id = (int) ($_POST['id'] ?? 0);
-    if ($id <= 0) {
-        http_response_code(400);
-        echo json_encode(['ok' => false, 'error' => 'Invalid order ID.']);
-        exit;
-    }
-
-    $db = getDb($config);
-    $stmt = $db->prepare(
-        "UPDATE orders SET status = 'archived' WHERE id = ? AND status = 'pending'"
-    );
-    $stmt->execute([$id]);
-
-    http_response_code(200);
-    echo json_encode(['ok' => true]);
-    exit;
-}
 
 $db = getDb($config);
 
@@ -112,7 +86,7 @@ $colCount = $filterStatus === 'pending' ? 9 : 8;
 
 $pageTitle  = 'Orders - Utility App';
 $activePage = 'orders';
-require __DIR__ . '/partials/header.php';
+require __DIR__ . '/../app/partials/header.php';
 ?>
 
 <div class="main">
@@ -178,10 +152,10 @@ require __DIR__ . '/partials/header.php';
                     </td>
                     <td class="qty hide-mobile"><?= (int) $order['total_quantity'] ?></td>
                     <td class="hide-mobile"><?= statusBadge($order['status']) ?></td>
-                    <td><?= h((function($d) {
+                    <td><?= h((function($d) use ($config) {
                         try {
                             return (new DateTimeImmutable($d))
-                                ->setTimezone(new DateTimeZone('America/Detroit'))
+                                ->setTimezone(new DateTimeZone($config['display_timezone']))
                                 ->format('d M Y, H:i');
                         } catch (Exception) { return $d; }
                     })($order['shopify_created_at'])) ?></td>
@@ -516,36 +490,9 @@ require __DIR__ . '/partials/header.php';
 (function () {
     'use strict';
 
-    // ── Date formatter (Detroit/Eastern time) ──────────────────────────────────
-    var dtFmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Detroit',
-        day:   '2-digit',
-        month: 'short',
-        year:  'numeric',
-        hour:  '2-digit',
-        minute:'2-digit',
-        hour12: false,
-    });
-
-    function fmtDate(dateStr) {
-        if (!dateStr) return '';
-        try {
-            var parts = {};
-            dtFmt.formatToParts(new Date(dateStr)).forEach(function (p) { parts[p.type] = p.value; });
-            return parts.day + ' ' + parts.month + ' ' + parts.year + ', ' + parts.hour + ':' + parts.minute;
-        } catch (e) {
-            return dateStr;
-        }
-    }
-
-    // ── HTML escaping ──────────────────────────────────────────────────────────
-    function esc(str) {
-        return String(str == null ? '' : str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
+    // fmtDate, escHtml, and toggleAccordion are provided by app/partials/header.php.
+    // Use escHtml() throughout this file (esc is aliased below for backward compat).
+    var esc = escHtml;
 
     // ── Status badge ───────────────────────────────────────────────────────────
     function statusBadge(status) {
@@ -740,9 +687,12 @@ require __DIR__ . '/partials/header.php';
             var body = new URLSearchParams();
             body.append('id', id);
 
-            fetch('orders.php?action=archive', {
+            fetch('api/archive-order.php', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                headers: {
+                    'Content-Type':  'application/x-www-form-urlencoded',
+                    'X-CSRF-Token':  CSRF_TOKEN,
+                },
                 body: body.toString(),
             })
             .then(function (res) { return res.json(); })
@@ -766,4 +716,4 @@ require __DIR__ . '/partials/header.php';
 }());
 </script>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php require __DIR__ . '/../app/partials/footer.php'; ?>
