@@ -55,15 +55,19 @@ if (!is_array($order) || empty($order['id'])) {
     exit('Unprocessable Entity');
 }
 
-// ── For non-fulfilled topics: only process paid orders ────────────────────────
+// ── For non-fulfilled topics: only process revenue-bearing orders ─────────────
 //
-// Drop orders whose financial_status is not 'paid' on create/update/paid topics.
-// The orders/paid topic always has financial_status=paid, but we check uniformly.
+// Accept paid, partially_refunded, and refunded orders.
+// Partially/fully refunded orders are stored with their original line item amounts;
+// refund attribution (order.refunds[].refund_line_items[]) is not applied to
+// revenue figures — refunds are rare and the data is still useful for reporting.
+
+const ACCEPTED_FINANCIAL_STATUSES = ['paid', 'partially_refunded', 'refunded'];
 
 if ($topic !== 'orders/fulfilled') {
     $financialStatus = $order['financial_status'] ?? '';
-    if ($financialStatus !== 'paid') {
-        webhookLog(dirname(__DIR__, 2) . '/logs/orders.log', $order['name'] ?? (string) $order['id'], $topic . ' (dropped: not paid, status=' . $financialStatus . ')');
+    if (!in_array($financialStatus, ACCEPTED_FINANCIAL_STATUSES, strict: true)) {
+        webhookLog(dirname(__DIR__, 2) . '/logs/orders.log', $order['name'] ?? (string) $order['id'], $topic . ' (dropped: status=' . $financialStatus . ')');
         http_response_code(200);
         echo 'OK';
         exit;

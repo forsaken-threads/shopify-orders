@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LOG_DIR="/var/log/shopify-orders"
+LOG_DIR="$REPO_ROOT/logs"
 LOG_USER="redrover"
 CRON_DEST="/etc/cron.d/utility-app"
 LOGROTATE_DEST="/etc/logrotate.d/utility-app"

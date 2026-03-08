@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 /**
- * Sync paid Shopify orders into the local database.
+ * Sync revenue-bearing Shopify orders into the local database.
  *
- * Queries the Shopify Admin API for all orders with financial_status=paid,
- * then inserts any that are not already present in the local SQLite database.
- * Orders already stored (matched by shopify_order_id) are skipped so existing
- * status values are never overwritten.
+ * Queries the Shopify Admin API for all orders, then inserts any with a
+ * financial_status of paid, partially_refunded, or refunded that are not
+ * already present in the local SQLite database.  Orders already stored
+ * (matched by shopify_order_id) are skipped so existing status values are
+ * never overwritten.  Refund amounts are not applied to line item figures —
+ * refund attribution (order.refunds[].refund_line_items[]) is available in
+ * raw_data if needed in future.
  *
  * Usage:
  *   php scripts/sync-paid-orders.php [--all-time]
@@ -251,8 +254,11 @@ $brandCache = [];
 // Build the initial URL.
 // Default: prior 25 hours so a daily cron catches anything missed by webhooks.
 // --all-time: no date filter, fetches full order history.
+// Fetch all orders and filter client-side; Shopify's financial_status param
+// only accepts a single value, so 'any' + local filtering is the simplest way
+// to capture paid, partially_refunded, and refunded in one pass.
 $queryParams = [
-    'financial_status' => 'paid',
+    'financial_status' => 'any',
     'status'           => 'any',
     'limit'            => '250',
     'order'            => 'created_at asc',
@@ -271,7 +277,7 @@ $nextUrl = sprintf(
 );
 
 $modeLabel = $allTime ? 'all-time history' : 'prior 25 hours';
-echo "Starting sync of paid orders ({$modeLabel}) from {$shopDomain}…\n";
+echo "Starting sync of paid/refunded orders ({$modeLabel}) from {$shopDomain}…\n";
 if (!$allTime) {
     echo "  Created after: {$queryParams['created_at_min']}\n";
 }
@@ -313,6 +319,13 @@ while ($nextUrl !== null) {
         if ($shopifyId === '') {
             echo "  Skipping order with no ID.\n";
             $errors++;
+            continue;
+        }
+
+        // Only store revenue-bearing orders; discard pending, authorized, voided, etc.
+        $financialStatus = $order['financial_status'] ?? '';
+        if (!in_array($financialStatus, ['paid', 'partially_refunded', 'refunded'], strict: true)) {
+            $skipped++;
             continue;
         }
 
