@@ -7,7 +7,11 @@ declare(strict_types=1);
  * GET /api/product-search.php?q=<search_term>
  *
  * Returns a JSON array of up to 20 active products whose title contains
- * the search term (case-insensitive full-string matching, not prefix-only).
+ * the search term (case-insensitive, accent-insensitive full-string matching).
+ *
+ * Matching is done in PHP after fetching all active product titles so that
+ * accent normalization (é→e, ô→o, ā→a, etc.) works correctly — SQLite's
+ * built-in LOWER() and LIKE only handle ASCII characters.
  *
  * Requires HTTP Basic Auth (same credentials as the web UI).
  *
@@ -30,15 +34,41 @@ if (mb_strlen($q) < 2) {
     exit;
 }
 
+/**
+ * Strip diacritics and fold to lowercase ASCII for accent-insensitive matching.
+ * e.g. "Le Falconé Jawhara" → "le falcone jawhara"
+ */
+function normalizeForSearch(string $s): string
+{
+    // Decompose characters into base + combining marks, then drop the marks.
+    $s = normalizer_normalize($s, Normalizer::FORM_D);
+    if ($s === false) {
+        return mb_strtolower($s);
+    }
+    // Remove combining diacritical marks (U+0300–U+036F).
+    $s = preg_replace('/[\x{0300}-\x{036F}]/u', '', $s) ?? $s;
+    return mb_strtolower($s);
+}
+
+$needle = normalizeForSearch($q);
+
 $db   = getDb($config);
 $stmt = $db->prepare(
     "SELECT shopify_product_id, title, vendor
      FROM   products
-     WHERE  LOWER(title) LIKE LOWER(:pattern)
-     AND    status = 'active'
-     ORDER BY title
-     LIMIT 20"
+     WHERE  status = 'active'
+     ORDER BY title"
 );
-$stmt->execute([':pattern' => '%' . $q . '%']);
+$stmt->execute();
 
-echo json_encode($stmt->fetchAll());
+$results = [];
+foreach ($stmt->fetchAll() as $row) {
+    if (mb_strpos(normalizeForSearch($row['title']), $needle) !== false) {
+        $results[] = $row;
+        if (count($results) === 20) {
+            break;
+        }
+    }
+}
+
+echo json_encode($results);
