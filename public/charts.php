@@ -390,28 +390,20 @@ require __DIR__ . '/partials/header.php';
         if (emptyEl) emptyEl.style.display = 'none';
         canvas.style.display = '';
 
-        // Build dataset: x = total ml sold (units × bottle size), y = revenue_per_ml
-        // Color by bottle size for visual grouping (hue based on ml bucket)
+        // Build dataset: x = total ml sold across all variants, y = revenue_per_ml
         const chartData = points.map(function (p) {
             return {
                 x:             p.total_ml,
                 y:             p.revenue_per_ml,
-                // Extra data for tooltip
                 product:       p.product,
-                variant:       p.variant,
-                ml:            p.ml,
                 total_units:   p.total_units,
                 total_revenue: p.total_revenue,
             };
         });
 
-        // Assign colors by bottle size so same-size variants share a color.
-        const mlValues   = [...new Set(points.map(p => p.ml))].sort((a, b) => a - b);
-        const palette    = generatePalette(mlValues.length);
-        const mlColorMap = {};
-        mlValues.forEach(function (ml, i) { mlColorMap[ml] = palette[i]; });
-
-        const pointColors = chartData.map(p => mlColorMap[p.ml] || 'rgba(26,26,46,0.7)');
+        // One color per product, spread evenly across the palette.
+        const palette     = generatePalette(points.length);
+        const pointColors = palette;
 
         if (chartInstance) {
             chartInstance.destroy();
@@ -438,13 +430,11 @@ require __DIR__ . '/partials/header.php';
                     tooltip: {
                         callbacks: {
                             title: function (items) {
-                                const d = items[0].raw;
-                                return d.product + (d.variant && d.variant !== 'Default' ? ' — ' + d.variant : '');
+                                return items[0].raw.product;
                             },
                             label: function (item) {
                                 const d = item.raw;
                                 return [
-                                    'Bottle size: ' + d.ml + ' ml',
                                     'Total ml sold: ' + Number(d.x).toLocaleString() + ' ml',
                                     '$/ml: $' + Number(d.y).toFixed(4),
                                     'Units sold: ' + Number(d.total_units).toLocaleString(),
