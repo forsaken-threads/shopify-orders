@@ -10,7 +10,8 @@ declare(strict_types=1);
  *
  * Flow:
  *   1. Visit /install.php
- *        → redirects to the Shopify OAuth consent page.
+ *        → if a working token already exists, shows a status page.
+ *        → otherwise redirects to the Shopify OAuth consent page.
  *   2. Merchant approves the app in Shopify admin.
  *        → Shopify redirects back to /install.php?code=…&hmac=…&shop=…
  *   3. The authorization code is exchanged for a permanent access token.
@@ -24,12 +25,12 @@ declare(strict_types=1);
 $config = require __DIR__ . '/config.php';
 require __DIR__ . '/auth.php';
 
-// Protect this page so only you can trigger an installation.
-requireBasicAuth($config['auth_user'], $config['auth_password'], 'Shopify Install');
+requireBasicAuth($config['auth_user'], $config['auth_password']);
 
 $apiKey     = $config['shopify_api_key'];
 $apiSecret  = $config['shopify_api_secret'];
 $shopDomain = $config['shopify_shop_domain'];
+$apiVersion = $config['shopify_api_version'];
 $iniPath    = $config['shopify_ini_path'];
 
 if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
@@ -38,10 +39,151 @@ if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
 }
 
 // Build the absolute callback URL for this script so Shopify can redirect back.
-// X-Forwarded-Proto is trusted (proxy headers are considered reliable in this environment).
 $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
 $scheme = $forwardedProto !== '' ? strtolower(explode(',', $forwardedProto)[0]) : ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
 $callbackUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
+
+// ── Shared layout helpers ─────────────────────────────────────────────────────
+
+function h(mixed $v): string
+{
+    return htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function renderPage(string $title, string $bodyContent): void
+{
+    echo <<<HTML
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{$title} - Utility App</title>
+        <style>
+            *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+            body {
+                font-family: system-ui, -apple-system, sans-serif;
+                background: #f0f2f5;
+                color: #1a1a2e;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .navbar {
+                background: #1a1a2e;
+                padding: .875rem 2rem;
+                display: flex;
+                align-items: center;
+            }
+
+            .navbar-brand {
+                font-size: .95rem;
+                font-weight: 700;
+                color: #fff;
+                text-decoration: none;
+                letter-spacing: .03em;
+            }
+
+            .main {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 3rem 2rem;
+            }
+
+            .card {
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 2px 8px rgba(0,0,0,.09);
+                padding: 2.5rem 3rem;
+                max-width: 500px;
+                width: 100%;
+            }
+
+            .card-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.75rem;
+                height: 2.75rem;
+                border-radius: 8px;
+                margin-bottom: 1.25rem;
+            }
+
+            .card-icon svg {
+                width: 1.35rem;
+                height: 1.35rem;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                fill: none;
+            }
+
+            .icon-success { background: #f0fff4; }
+            .icon-success svg { stroke: #38a169; }
+            .icon-warning { background: #fffbeb; }
+            .icon-warning svg { stroke: #d97706; }
+
+            h1 {
+                font-size: 1.2rem;
+                font-weight: 700;
+                margin-bottom: .6rem;
+            }
+
+            p {
+                font-size: .9rem;
+                color: #555;
+                line-height: 1.6;
+                margin-bottom: 1rem;
+            }
+
+            p:last-of-type { margin-bottom: 1.5rem; }
+
+            .btn {
+                display: inline-block;
+                padding: .55rem 1.4rem;
+                background: #1a1a2e;
+                color: #fff;
+                text-decoration: none;
+                border-radius: 7px;
+                font-size: .875rem;
+                font-weight: 600;
+                transition: background .15s;
+            }
+
+            .btn:hover { background: #2d2d5e; }
+
+            .meta {
+                margin-top: 1.25rem;
+                font-size: .78rem;
+                color: #aaa;
+                border-top: 1px solid #f0f0f0;
+                padding-top: 1rem;
+            }
+
+            @media (max-width: 560px) {
+                .card { padding: 2rem 1.5rem; }
+                .navbar { padding: .75rem 1rem; }
+            }
+        </style>
+    </head>
+    <body>
+    <nav class="navbar">
+        <a class="navbar-brand" href="index.php">Utility App</a>
+    </nav>
+    <main class="main">
+        <div class="card">
+            {$bodyContent}
+        </div>
+    </main>
+    </body>
+    </html>
+    HTML;
+    exit;
+}
 
 // ── Step 2: OAuth callback — exchange code for access token ──────────────────
 
@@ -90,7 +232,7 @@ if (isset($_GET['code'])) {
     $statusLine = $http_response_header[0] ?? '';
     if (!preg_match('#HTTP/\S+\s+(2\d{2})#', $statusLine)) {
         http_response_code(502);
-        exit('Shopify returned an error: ' . htmlspecialchars($statusLine) . ' — ' . htmlspecialchars($response));
+        exit('Shopify returned an error: ' . h($statusLine) . ' — ' . h($response));
     }
 
     try {
@@ -103,7 +245,7 @@ if (isset($_GET['code'])) {
     $token = (string) ($data['access_token'] ?? '');
     if ($token === '') {
         http_response_code(502);
-        exit('Shopify did not return an access_token. Response: ' . htmlspecialchars($response));
+        exit('Shopify did not return an access_token. Response: ' . h($response));
     }
 
     // Persist the token to shopify.ini (gitignored).
@@ -113,13 +255,54 @@ if (isset($_GET['code'])) {
 
     if (file_put_contents($iniPath, $ini) === false) {
         http_response_code(500);
-        exit('Token was obtained but could not be written to ' . htmlspecialchars($iniPath) . '. Check file-system permissions.');
+        exit('Token was obtained but could not be written to ' . h($iniPath) . '. Check file-system permissions.');
     }
 
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Success! Access token saved to shopify.ini.' . PHP_EOL;
-    echo 'The webhook is now authorized to call the Shopify Admin API.' . PHP_EOL;
-    exit;
+    renderPage('Installation Complete', <<<HTML
+        <div class="card-icon icon-success">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h1>Installation complete</h1>
+        <p>The Shopify access token was successfully obtained and saved.</p>
+        <p>Your app is now authorized to call the Shopify Admin API.</p>
+        <a class="btn" href="orders.php">View pending orders</a>
+        <p class="meta">Token stored in <code>shopify.ini</code> &mdash; never commit this file.</p>
+    HTML);
+}
+
+// ── Token pre-flight check ────────────────────────────────────────────────────
+
+$existingToken = $config['shopify_access_token'];
+
+if ($existingToken !== '') {
+    // Test the token with a lightweight Admin API call.
+    $testUrl = sprintf('https://%s/admin/api/%s/shop.json', $shopDomain, $apiVersion);
+    $testContext = stream_context_create([
+        'http' => [
+            'method'        => 'GET',
+            'header'        => 'X-Shopify-Access-Token: ' . $existingToken . "\r\nAccept: application/json",
+            'timeout'       => 8,
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $testResponse   = @file_get_contents($testUrl, false, $testContext);
+    $testStatusLine = $http_response_header[0] ?? '';
+    $tokenWorking   = $testResponse !== false && preg_match('#HTTP/\S+\s+200#', $testStatusLine);
+
+    if ($tokenWorking) {
+        renderPage('Installation', <<<HTML
+            <div class="card-icon icon-success">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h1>Token is working</h1>
+            <p>An existing Shopify access token is stored and verified against the API &mdash; everything is configured correctly.</p>
+            <p>To re-authorize or rotate credentials, remove <code>shopify.ini</code> and revisit this page.</p>
+            <a class="btn" href="orders.php">View pending orders</a>
+        HTML);
+    }
+
+    // Token exists but failed the test — fall through to OAuth flow below.
 }
 
 // ── Step 1: Redirect to Shopify OAuth consent page ───────────────────────────
@@ -128,7 +311,7 @@ $authUrl = sprintf(
     'https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s',
     $shopDomain,
     rawurlencode($apiKey),
-    rawurlencode('read_products'),
+    rawurlencode('read_products,read_orders'),
     rawurlencode($callbackUrl)
 );
 
