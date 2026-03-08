@@ -1,2 +1,4 @@
 #!/bin/bash
-docker exec -it -u 1000:1000 --workdir /var/www/utility php84-web-1 "$@"
+args=(-u 1000:1000 --workdir /var/www/utility)
+[ -t 0 ] && args=(-it "${args[@]}")
+docker exec "${args[@]}" php84-web-1 "$@"

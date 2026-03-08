@@ -1,5 +1,5 @@
 # shopify-orders sync jobs
-# Install: cp cron.tab /etc/cron.d/shopify-orders
+# Install: sudo scripts/publish-artifacts.sh
 # Requires: /home/redrover/environments/php84/src/utility/do
 
 SHELL=/bin/bash
