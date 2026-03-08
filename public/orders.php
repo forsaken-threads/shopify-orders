@@ -555,6 +555,10 @@ body { min-height: 0; }
 .btn-print:disabled { opacity: .45; cursor: default; }
 
 /* ── Print modal body ──────────────────────────────────────────────────────── */
+#print-modal .modal-box {
+    width: min(1100px, 100%);
+}
+
 .print-modal-body {
     overflow: auto;
     padding: 1rem 1.25rem 1.25rem;
