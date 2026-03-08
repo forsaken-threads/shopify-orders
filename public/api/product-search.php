@@ -42,8 +42,7 @@ $db   = getDb($config);
 $stmt = $db->prepare(
     "SELECT shopify_product_id, title, vendor
      FROM   products
-     WHERE  status           = 'active'
-       AND  deleted_at       IS NULL
+     WHERE  deleted_at       IS NULL
        AND  normalized_title LIKE :needle
      ORDER  BY title
      LIMIT  20"

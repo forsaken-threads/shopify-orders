@@ -13,7 +13,7 @@ declare(strict_types=1);
  */
 
 $projectRoot = dirname(__DIR__);
-$config      = require $projectRoot . '/public/config.php';
+$config      = require $projectRoot . '/app/config.php';
 require $projectRoot . '/app/normalize.php';
 
 $pdo = new PDO(

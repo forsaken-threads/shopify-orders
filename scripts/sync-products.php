@@ -39,8 +39,8 @@ declare(strict_types=1);
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 $projectRoot = dirname(__DIR__);
-$config      = require $projectRoot . '/public/config.php';
-require $projectRoot . '/public/db.php';
+$config      = require $projectRoot . '/app/config.php';
+require $projectRoot . '/app/db.php';
 require $projectRoot . '/app/shopify.php';
 require $projectRoot . '/app/normalize.php';
 
