@@ -33,7 +33,7 @@ function requireBasicAuth(string $expectedUser, string $expectedPassword, string
 
     if (!$valid) {
         header(sprintf('WWW-Authenticate: Basic realm="%s"', addslashes($realm)));
-        http_response_code(401);
-        exit('401 Unauthorized');
+        require __DIR__ . '/401.php';
+        exit;
     }
 }
