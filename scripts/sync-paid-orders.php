@@ -228,10 +228,10 @@ function fetchProductBrand(
 $orderStmt = $db->prepare(<<<'SQL'
     INSERT INTO orders
         (shopify_order_id, order_number, customer_name, customer_email,
-         total_price, currency, raw_data, shopify_created_at)
+         total_price, currency, status, raw_data, shopify_created_at)
     VALUES
         (:shopify_id, :order_number, :customer_name, :customer_email,
-         :total_price, :currency, :raw_data, :created_at)
+         :total_price, :currency, :status, :raw_data, :created_at)
 SQL);
 
 $lineStmt = $db->prepare(<<<'SQL'
@@ -267,6 +267,11 @@ $queryParams = [
 if (!$allTime) {
     // 25 hours ago in ISO 8601 UTC so cron runs with a comfortable overlap window.
     $queryParams['created_at_min'] = date('c', time() - (25 * 3600));
+} else {
+    // Shopify's REST API defaults to the last 60 days when no created_at_min is
+    // supplied, even with status=any.  Setting a far-past date forces it to return
+    // the full order history from store birth.
+    $queryParams['created_at_min'] = '2000-01-01T00:00:00Z';
 }
 
 $nextUrl = sprintf(
@@ -357,6 +362,10 @@ while ($nextUrl !== null) {
             );
         }
 
+        // Derive local status from Shopify's fulfillment_status so orders that
+        // are already fulfilled when first synced are not stored as pending.
+        $status = ($order['fulfillment_status'] ?? null) === 'fulfilled' ? 'fulfilled' : 'pending';
+
         // Build field values.
         $orderNumber  = (string) ($order['order_number'] ?? $order['name'] ?? $order['id']);
         $customerName = trim(
@@ -379,6 +388,7 @@ while ($nextUrl !== null) {
                 ':customer_email' => $customerEmail,
                 ':total_price'    => $totalPrice,
                 ':currency'       => $currency,
+                ':status'         => $status,
                 ':raw_data'       => $rawData,
                 ':created_at'     => $createdAt,
             ]);
