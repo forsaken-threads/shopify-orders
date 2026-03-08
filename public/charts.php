@@ -116,33 +116,93 @@ require __DIR__ . '/partials/header.php';
 
     .accordion-card.open .accordion-body { display: block; }
 
-    /* ── Period selector ── */
-    .period-selector {
+    /* ── Filter bar ── */
+    .filter-bar {
         display: flex;
         flex-wrap: wrap;
-        gap: .5rem;
+        align-items: flex-end;
+        gap: 1rem;
         margin-top: 1.25rem;
         margin-bottom: 1.5rem;
     }
 
-    .period-btn {
-        display: inline-flex;
-        align-items: center;
-        padding: .4rem 1rem;
-        border-radius: 6px;
-        font-size: .82rem;
-        font-weight: 500;
-        cursor: pointer;
-        color: #555;
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        font-family: inherit;
-        transition: background .15s, border-color .15s, color .15s;
+    .filter-bar label {
+        display: flex;
+        flex-direction: column;
+        gap: .3rem;
+        font-size: .74rem;
+        font-weight: 600;
+        color: #888;
+        letter-spacing: .04em;
+        text-transform: uppercase;
     }
 
-    .period-btn:hover { background: #f0f0f5; border-color: #c8d0e0; }
+    .filter-bar select,
+    .filter-bar input[type="number"] {
+        height: 2.1rem;
+        padding: 0 .75rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: .85rem;
+        font-family: inherit;
+        color: #333;
+        background: #fff;
+        transition: border-color .15s;
+    }
 
-    .period-btn.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+    .filter-bar select:focus,
+    .filter-bar input[type="number"]:focus {
+        outline: none;
+        border-color: #1a1a2e;
+    }
+
+    .filter-bar select {
+        appearance: none;
+        -webkit-appearance: none;
+        padding-right: 2rem;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right .6rem center;
+        cursor: pointer;
+        min-width: 9rem;
+    }
+
+    .filter-bar input[type="number"] {
+        width: 6rem;
+        -moz-appearance: textfield;
+    }
+
+    .filter-bar input[type="number"]::-webkit-outer-spin-button,
+    .filter-bar input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .vol-range {
+        display: flex;
+        flex-direction: column;
+        gap: .3rem;
+    }
+
+    .vol-range-label {
+        font-size: .74rem;
+        font-weight: 600;
+        color: #888;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+
+    .vol-range-inputs {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+    }
+
+    .vol-range-sep {
+        color: #bbb;
+        font-size: .85rem;
+        padding-bottom: 1px;
+    }
 
     /* ── Chart loading / error states ── */
     .chart-loading {
@@ -257,13 +317,27 @@ require __DIR__ . '/partials/header.php';
 
             <div class="accordion-body" id="body-ml-revenue">
 
-                <!-- Period selector -->
-                <div class="period-selector" id="ml-period-selector">
-                    <button class="period-btn" data-period="ytd">Year to Date</button>
-                    <button class="period-btn" data-period="ttm">Trailing 12 Mo.</button>
-                    <?php foreach ($years as $y): ?>
-                    <button class="period-btn" data-period="<?= $y ?>"><?= $y ?></button>
-                    <?php endforeach; ?>
+                <!-- Filter bar -->
+                <div class="filter-bar" id="ml-filter-bar">
+                    <label>
+                        Period
+                        <select id="ml-period-select">
+                            <option value="ytd">Year to Date</option>
+                            <option value="ttm">Trailing 12 Months</option>
+                            <?php foreach ($years as $y): ?>
+                            <option value="<?= $y ?>"><?= $y ?></option>
+                            <?php endforeach; ?>
+                            <option value="all">All Time</option>
+                        </select>
+                    </label>
+                    <div class="vol-range">
+                        <div class="vol-range-label">Volume sold (ml)</div>
+                        <div class="vol-range-inputs">
+                            <input type="number" id="ml-vol-min" min="0" step="1" placeholder="min">
+                            <span class="vol-range-sep">–</span>
+                            <input type="number" id="ml-vol-max" min="0" step="1" placeholder="max">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Loading -->
@@ -307,31 +381,47 @@ require __DIR__ . '/partials/header.php';
 
     // ── Per-ML Revenue chart ───────────────────────────────────────────────────
 
-    const loadingEl  = document.getElementById('ml-loading');
-    const errorEl    = document.getElementById('ml-error');
-    const chartArea  = document.getElementById('ml-chart-area');
-    const metaEl     = document.getElementById('ml-chart-meta');
-    const canvas     = document.getElementById('ml-chart-canvas');
-    const selector   = document.getElementById('ml-period-selector');
+    const loadingEl    = document.getElementById('ml-loading');
+    const errorEl      = document.getElementById('ml-error');
+    const chartArea    = document.getElementById('ml-chart-area');
+    const metaEl       = document.getElementById('ml-chart-meta');
+    const canvas       = document.getElementById('ml-chart-canvas');
+    const periodSelect = document.getElementById('ml-period-select');
+    const volMinInput  = document.getElementById('ml-vol-min');
+    const volMaxInput  = document.getElementById('ml-vol-max');
 
     let chartInstance = null;
-    let activePeriod  = null;
+    let chartLoaded   = false;
+    let volDebounce   = null;
 
-    // Period button clicks
-    selector.addEventListener('click', function (e) {
-        const btn = e.target.closest('.period-btn');
-        if (!btn) return;
+    // Auto-load chart when accordion first opens
+    const _origToggle = window.toggleAccordion;
+    window.toggleAccordion = function (cardId) {
+        _origToggle(cardId);
+        if (cardId === 'card-ml-revenue') {
+            const card = document.getElementById('card-ml-revenue');
+            if (card.classList.contains('open') && !chartLoaded) {
+                chartLoaded = true;
+                loadChart();
+            }
+        }
+    };
 
-        const period = btn.dataset.period;
-        if (period === activePeriod) return;
-
-        // Update active state
-        selector.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activePeriod = period;
-
-        loadChart(period);
+    // Reload on period change
+    periodSelect.addEventListener('change', function () {
+        chartLoaded = true;
+        loadChart();
     });
+
+    // Debounced reload on volume filter change
+    function onVolChange() {
+        clearTimeout(volDebounce);
+        volDebounce = setTimeout(function () {
+            if (chartLoaded) loadChart();
+        }, 450);
+    }
+    volMinInput.addEventListener('input', onVolChange);
+    volMaxInput.addEventListener('input', onVolChange);
 
     function showLoading(on) {
         loadingEl.classList.toggle('visible', on);
@@ -342,12 +432,20 @@ require __DIR__ . '/partials/header.php';
         errorEl.classList.toggle('visible', msg !== '');
     }
 
-    function loadChart(period) {
+    function loadChart() {
+        const period = periodSelect.value;
+        const volMin = volMinInput.value !== '' ? parseInt(volMinInput.value, 10) : null;
+        const volMax = volMaxInput.value !== '' ? parseInt(volMaxInput.value, 10) : null;
+
+        let url = 'api/ml-revenue.php?period=' + encodeURIComponent(period);
+        if (volMin !== null && !isNaN(volMin)) url += '&vol_min=' + volMin;
+        if (volMax !== null && !isNaN(volMax)) url += '&vol_max=' + volMax;
+
         showLoading(true);
         showError('');
         chartArea.classList.remove('visible');
 
-        fetch('api/ml-revenue.php?period=' + encodeURIComponent(period))
+        fetch(url)
             .then(function (res) {
                 if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
                 return res.json();
@@ -390,27 +488,20 @@ require __DIR__ . '/partials/header.php';
         if (emptyEl) emptyEl.style.display = 'none';
         canvas.style.display = '';
 
-        // Build dataset: x = ml, y = revenue_per_ml
-        // Color by ml size for visual grouping (hue based on ml bucket)
+        // Build dataset: x = total ml sold across all variants, y = revenue_per_ml
         const chartData = points.map(function (p) {
             return {
-                x:             p.ml,
+                x:             p.total_ml,
                 y:             p.revenue_per_ml,
-                // Extra data for tooltip
                 product:       p.product,
-                variant:       p.variant,
                 total_units:   p.total_units,
                 total_revenue: p.total_revenue,
             };
         });
 
-        // Assign colors by ml bucket so same-size variants cluster visually.
-        const mlValues  = [...new Set(points.map(p => p.ml))].sort((a, b) => a - b);
-        const palette   = generatePalette(mlValues.length);
-        const mlColorMap = {};
-        mlValues.forEach(function (ml, i) { mlColorMap[ml] = palette[i]; });
-
-        const pointColors = chartData.map(p => mlColorMap[p.x] || 'rgba(26,26,46,0.7)');
+        // One color per product, spread evenly across the palette.
+        const palette     = generatePalette(points.length);
+        const pointColors = palette;
 
         if (chartInstance) {
             chartInstance.destroy();
@@ -437,13 +528,12 @@ require __DIR__ . '/partials/header.php';
                     tooltip: {
                         callbacks: {
                             title: function (items) {
-                                const d = items[0].raw;
-                                return d.product + (d.variant && d.variant !== 'Default' ? ' — ' + d.variant : '');
+                                return items[0].raw.product;
                             },
                             label: function (item) {
                                 const d = item.raw;
                                 return [
-                                    'ML size: ' + d.x + ' ml',
+                                    'Total ml sold: ' + Number(d.x).toLocaleString() + ' ml',
                                     '$/ml: $' + Number(d.y).toFixed(4),
                                     'Units sold: ' + Number(d.total_units).toLocaleString(),
                                     'Revenue: $' + Number(d.total_revenue).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}),
@@ -458,12 +548,12 @@ require __DIR__ . '/partials/header.php';
                     x: {
                         title: {
                             display: true,
-                            text:    'Variant Size (ml)',
+                            text:    'Total ML Sold',
                             font:    { size: 12, weight: '600' },
                             color:   '#444',
                         },
                         ticks: {
-                            callback: function (v) { return v + ' ml'; },
+                            callback: function (v) { return Number(v).toLocaleString() + ' ml'; },
                             color: '#666',
                         },
                         grid: { color: '#f0f0f0' },

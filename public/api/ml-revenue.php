@@ -4,16 +4,19 @@ declare(strict_types=1);
 /**
  * Per-ML revenue endpoint for the scatter plot chart.
  *
- * GET /api/ml-revenue.php?period=<period>
+ * GET /api/ml-revenue.php?period=<period>[&vol_min=<int>][&vol_max=<int>]
  *
- * Computes revenue-per-ml for every non-bundle product variant that has a
- * known ml size (variant_ml IS NOT NULL).  Results are aggregated across all
- * paid orders in the requested time period.
+ * Computes revenue-per-ml for every non-bundle product that has at least one
+ * variant with a known ml size.  All variants of a product are summed together
+ * so each product yields a single data point.
  *
  * period values:
  *   ytd          Year-to-date (Jan 1 of the current year through now)
  *   ttm          Trailing twelve months
  *   2024, 2025   Full calendar year
+ *   all          No date restriction (full order history)
+ *
+ * vol_min / vol_max  Optional integer filters on total ml sold per product.
  *
  * Requires HTTP Basic Auth (same credentials as the web UI).
  *
@@ -23,17 +26,16 @@ declare(strict_types=1);
  *   "points": [
  *     {
  *       "product":         "...",
- *       "variant":         "100 ml",
- *       "ml":              100,
  *       "total_units":     <int>,
+ *       "total_ml":        <int>,
  *       "total_revenue":   <float>,
  *       "revenue_per_ml":  <float>
  *     }, ...
  *   ]
  * }
  *
- * revenue_per_ml = total_revenue / (total_units * ml)
- *   i.e., the average selling price per ml across all sales of that variant.
+ * total_ml       = SUM(quantity * variant_ml) across all variants
+ * revenue_per_ml = total_revenue / total_ml
  */
 
 $config = require __DIR__ . '/../config.php';
@@ -65,11 +67,16 @@ if ($period === 'ytd') {
     }
 }
 
-if ($dateMin === null && !ctype_digit($period)) {
+if ($dateMin === null && $period !== 'all') {
     http_response_code(400);
-    echo json_encode(['error' => 'Invalid period. Use ytd, ttm, or a year (e.g. 2024).']);
+    echo json_encode(['error' => 'Invalid period. Use ytd, ttm, all, or a year (e.g. 2024).']);
     exit;
 }
+
+// ── Volume filter params ───────────────────────────────────────────────────────
+
+$volMin = isset($_GET['vol_min']) && is_numeric($_GET['vol_min']) ? max(0, (int) $_GET['vol_min']) : null;
+$volMax = isset($_GET['vol_max']) && is_numeric($_GET['vol_max']) ? max(0, (int) $_GET['vol_max']) : null;
 
 $db = getDb($config);
 
@@ -97,24 +104,34 @@ if ($dateMax !== null) {
 
 $where = implode(' AND ', $whereClauses);
 
+$havingClauses = ['total_ml > 0'];
+if ($volMin !== null) {
+    $havingClauses[] = 'total_ml >= :vol_min';
+    $params[':vol_min'] = $volMin;
+}
+if ($volMax !== null) {
+    $havingClauses[] = 'total_ml <= :vol_max';
+    $params[':vol_max'] = $volMax;
+}
+$having = implode(' AND ', $havingClauses);
+
 $sql = "
     SELECT
         p.title                                                           AS product,
-        COALESCE(NULLIF(oli.variant_title, ''), 'Default')               AS variant,
-        oli.variant_ml                                                    AS ml,
+        SUM(oli.quantity * oli.variant_ml)                               AS total_ml,
         SUM(oli.quantity)                                                 AS total_units,
         ROUND(SUM(oli.quantity * oli.price), 2)                          AS total_revenue,
         ROUND(
             SUM(oli.quantity * oli.price) /
-            (SUM(oli.quantity) * oli.variant_ml),
+            SUM(oli.quantity * oli.variant_ml),
             4
         )                                                                 AS revenue_per_ml
     FROM  order_line_items oli
     JOIN  orders            o ON o.id = oli.order_id
     JOIN  products          p ON p.shopify_product_id = oli.shopify_product_id
     WHERE {$where}
-    GROUP BY oli.shopify_product_id, oli.variant_title, oli.variant_ml
-    HAVING total_units > 0
+    GROUP BY oli.shopify_product_id
+    HAVING {$having}
     ORDER BY revenue_per_ml DESC
 ";
 
@@ -124,9 +141,8 @@ $rows = $stmt->fetchAll();
 
 $points = array_map(fn($r) => [
     'product'        => $r['product'],
-    'variant'        => $r['variant'],
-    'ml'             => (int)   $r['ml'],
     'total_units'    => (int)   $r['total_units'],
+    'total_ml'       => (int)   $r['total_ml'],
     'total_revenue'  => (float) $r['total_revenue'],
     'revenue_per_ml' => (float) $r['revenue_per_ml'],
 ], $rows);
