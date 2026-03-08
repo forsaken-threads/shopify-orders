@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Shopify webhook endpoint.
  *
  * Register in Shopify admin under Settings → Notifications → Webhooks.
- * Supported topics: orders/create, orders/updated, orders/paid
+ * Supported topics: orders/create, orders/updated, orders/paid, orders/fulfilled
  *
  * Every request is authenticated by verifying the X-Shopify-Hmac-Sha256 header:
  *   X-Shopify-Hmac-Sha256: <base64(HMAC-SHA256(SHOPIFY_WEBHOOK_SECRET, raw_body))>
@@ -39,7 +39,7 @@ if (!verifyShopifyHmac($config['shopify_webhook_secret'], $rawBody)) {
 $topic   = $_SERVER['HTTP_X_SHOPIFY_TOPIC'] ?? '';
 
 // Acknowledge topics we don't handle with 200 so Shopify stops retrying.
-$handled = ['orders/create', 'orders/updated', 'orders/paid'];
+$handled = ['orders/create', 'orders/updated', 'orders/paid', 'orders/fulfilled'];
 if (!in_array($topic, $handled, strict: true)) {
     http_response_code(200);
     exit('OK');
@@ -52,6 +52,26 @@ $order = json_decode($rawBody, associative: true, flags: JSON_THROW_ON_ERROR);
 if (!is_array($order) || empty($order['id'])) {
     http_response_code(422);
     exit('Unprocessable Entity');
+}
+
+// ── Handle orders/fulfilled — update status on locally stored orders ──────────
+//
+// When Shopify fires orders/fulfilled we only need to flip the local status.
+// We do NOT re-upsert the full order or replace line items.
+
+if ($topic === 'orders/fulfilled') {
+    $db = getDb($config);
+
+    $shopifyId = (string) $order['id'];
+
+    $stmt = $db->prepare(
+        "UPDATE orders SET status = 'fulfilled' WHERE shopify_order_id = ? AND status != 'fulfilled'"
+    );
+    $stmt->execute([$shopifyId]);
+
+    http_response_code(200);
+    echo 'OK';
+    exit;
 }
 
 // ── Fetch custom.brand metafield for each product via Shopify Admin API ───────
