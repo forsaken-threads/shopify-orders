@@ -80,9 +80,9 @@ function statusBadge(string $status): string
 }
 
 // Number of visible columns (used for accordion colspan).
-// Base: expand, order, customer, total, items, status, order-date, download = 8
-// +1 if pending (archive button)
-$colCount = $filterStatus === 'pending' ? 9 : 8;
+// Base: expand, order, customer, total, items, status, order-date = 7
+// +2 if pending (print + archive buttons)
+$colCount = $filterStatus === 'pending' ? 9 : 7;
 
 $pageTitle  = 'Orders - Utility App';
 $activePage = 'orders';
@@ -127,8 +127,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th class="hide-mobile">Items</th>
                     <th class="hide-mobile">Status</th>
                     <th>Order Date</th>
-                    <th></th>
-                    <?php if ($filterStatus === 'pending'): ?><th></th><?php endif; ?>
+                    <?php if ($filterStatus === 'pending'): ?><th></th><th></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -160,14 +159,15 @@ require __DIR__ . '/../app/partials/header.php';
                                 ->format('d M Y, H:i');
                         } catch (Exception) { return $d; }
                     })($order['shopify_created_at'])) ?></td>
-                    <td>
-                        <a class="btn-download"
-                           href="download.php?id=<?= $oid ?>"
-                           title="Download CSV for order <?= h($order['order_number']) ?>">
-                            ↓ CSV
-                        </a>
-                    </td>
                     <?php if ($filterStatus === 'pending'): ?>
+                    <td>
+                        <button class="btn-print"
+                                data-id="<?= $oid ?>"
+                                data-order-number="<?= h($order['order_number']) ?>"
+                                title="Print labels for order <?= h($order['order_number']) ?>">
+                            Print
+                        </button>
+                    </td>
                     <td>
                         <button class="btn-archive"
                                 data-id="<?= $oid ?>"
@@ -258,6 +258,21 @@ require __DIR__ . '/../app/partials/header.php';
             Fetching raw data…
         </div>
         <pre id="modal-json" class="modal-json"></pre>
+    </div>
+</div>
+
+<!-- ── Print Labels Modal ──────────────────────────────────────────────── -->
+<div id="print-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-label="Print labels">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span class="modal-title" id="print-modal-title">Print Labels</span>
+            <button id="print-modal-close" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="print-modal-loading" class="modal-fetch-loading" hidden>
+            <div class="detail-spinner"></div>
+            Loading line items…
+        </div>
+        <div id="print-modal-body" class="print-modal-body"></div>
     </div>
 </div>
 
@@ -520,6 +535,119 @@ body { min-height: 0; }
     tab-size: 2;
     flex: 1;
 }
+
+/* ── Print button ──────────────────────────────────────────────────────────── */
+.btn-print {
+    display: inline-block;
+    padding: .4rem 1rem;
+    background: #1a1a2e;
+    color: #fff;
+    border: 1px solid #1a1a2e;
+    border-radius: 6px;
+    font-size: .8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.btn-print:hover { background: #2d2d5e; border-color: #2d2d5e; }
+.btn-print:disabled { opacity: .45; cursor: default; }
+
+/* ── Print modal body ──────────────────────────────────────────────────────── */
+.print-modal-body {
+    overflow: auto;
+    padding: 1rem 1.25rem 1.25rem;
+    flex: 1;
+}
+
+.print-modal-body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+    margin-bottom: 1rem;
+}
+
+.print-modal-body th {
+    text-align: left;
+    padding: .4rem .5rem;
+    border-bottom: 2px solid var(--border, #e5e7eb);
+    font-weight: 600;
+    font-size: .78rem;
+    color: var(--text-muted, #6b7280);
+    white-space: nowrap;
+    background: transparent;
+    color: var(--text-muted, #6b7280);
+}
+
+.print-modal-body td {
+    padding: .35rem .5rem;
+    border-bottom: 1px solid var(--border, #f3f4f6);
+    vertical-align: middle;
+}
+
+.print-modal-body input[type="text"] {
+    width: 100%;
+    padding: .35rem .5rem;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 4px;
+    font-size: .85rem;
+    font-family: inherit;
+    color: var(--text, #111827);
+}
+
+.print-modal-body input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent, #4f46e5);
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, .15);
+}
+
+.print-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .75rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.btn-print-submit {
+    padding: .55rem 1.5rem;
+    background: #1a1a2e;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.btn-print-submit:hover { background: #2d2d5e; }
+.btn-print-submit:disabled { opacity: .45; cursor: default; }
+
+.btn-print-cancel {
+    padding: .55rem 1.5rem;
+    background: transparent;
+    color: #666;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-print-cancel:hover { background: #f3f4f6; color: #333; }
+
+.print-error {
+    color: #b91c1c;
+    font-size: .85rem;
+    margin-right: auto;
+}
+
+/* Row printed state (mirrors archived-row) */
+tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events: none; }
 </style>
 
 <script>
@@ -709,6 +837,170 @@ body { min-height: 0; }
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !modal.hidden) closeModal();
+        if (e.key === 'Escape' && !printModal.hidden) closePrintModal();
+    });
+
+    // ── Print modal ───────────────────────────────────────────────────────────
+    var printModal     = document.getElementById('print-modal');
+    var printTitle     = document.getElementById('print-modal-title');
+    var printLoading   = document.getElementById('print-modal-loading');
+    var printBody      = document.getElementById('print-modal-body');
+    var printCloseBtn  = document.getElementById('print-modal-close');
+    var activePrintId  = null;   // order id currently in the print modal
+
+    function stripBrandPrefix(title, brand) {
+        if (!brand) return title;
+        // Strip leading "Brand - " or "Brand: " prefix that matches custom_brand
+        var re = new RegExp('^' + brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-:]\\s*', 'i');
+        return title.replace(re, '');
+    }
+
+    function renderPrintForm(data) {
+        var o  = data.order;
+        var li = data.line_items;
+        if (!li || li.length === 0) {
+            return '<p style="color:#888;font-size:.85rem;">No line items to print.</p>';
+        }
+
+        var rows = li.map(function (item, i) {
+            var strippedTitle = stripBrandPrefix(item.title, item.custom_brand);
+            var brand = item.custom_brand || '';
+            return '<tr>' +
+                '<td>' +
+                    '<input type="text" name="items[' + i + '][title]" value="' + esc(strippedTitle) + '">' +
+                    '<input type="hidden" name="items[' + i + '][full_title]" value="' + esc(item.title) + '">' +
+                    '<input type="hidden" name="items[' + i + '][shopify_product_id]" value="' + esc(item.shopify_product_id || '') + '">' +
+                '</td>' +
+                '<td>' +
+                    '<input type="text" name="items[' + i + '][custom_brand]" value="' + esc(brand) + '">' +
+                    '<input type="hidden" name="items[' + i + '][original_brand]" value="' + esc(brand) + '">' +
+                '</td>' +
+                '<td class="qty">' + Number(item.quantity) + '</td>' +
+                '</tr>';
+        }).join('');
+
+        return '<form id="print-form">' +
+            '<input type="hidden" name="order_id" value="' + esc(String(o.id)) + '">' +
+            '<table><thead><tr>' +
+            '<th>Product Title</th><th>Brand</th><th>Qty</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>' +
+            '<div class="print-modal-footer">' +
+            '<span class="print-error" id="print-error"></span>' +
+            '<button type="button" class="btn-print-cancel" id="print-cancel-btn">Cancel</button>' +
+            '<button type="submit" class="btn-print-submit" id="print-submit-btn">Print Labels</button>' +
+            '</div>' +
+            '</form>';
+    }
+
+    function openPrintModal(orderId, orderNumber) {
+        activePrintId = orderId;
+        printTitle.textContent = 'Print Labels — Order ' + orderNumber;
+        printBody.innerHTML = '';
+        printModal.hidden = false;
+        printCloseBtn.focus();
+
+        function show(data) {
+            printLoading.hidden = true;
+            printBody.innerHTML = renderPrintForm(data);
+            // wire cancel button
+            var cancelBtn = document.getElementById('print-cancel-btn');
+            if (cancelBtn) cancelBtn.addEventListener('click', closePrintModal);
+            // wire form submit
+            var form = document.getElementById('print-form');
+            if (form) form.addEventListener('submit', handlePrintSubmit);
+        }
+
+        if (detailCache[orderId]) {
+            printLoading.hidden = true;
+            show(detailCache[orderId]);
+            return;
+        }
+
+        printLoading.hidden = false;
+        fetch('api/order-detail.php?id=' + encodeURIComponent(orderId))
+            .then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
+                return res.json();
+            })
+            .then(function (data) {
+                detailCache[orderId] = data;
+                show(data);
+            })
+            .catch(function (err) {
+                printLoading.hidden = true;
+                printBody.innerHTML =
+                    '<p style="color:#b91c1c;font-size:.85rem;padding:.5rem 0;">' +
+                    'Failed to load order details: ' + esc(err.message) + '</p>';
+            });
+    }
+
+    function closePrintModal() {
+        printModal.hidden = true;
+        activePrintId = null;
+    }
+
+    function handlePrintSubmit(e) {
+        e.preventDefault();
+        var form      = e.target;
+        var submitBtn = document.getElementById('print-submit-btn');
+        var errorEl   = document.getElementById('print-error');
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Printing…';
+        errorEl.textContent = '';
+
+        var formData = new FormData(form);
+
+        fetch('api/print-order.php', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': CSRF_TOKEN },
+            body: formData,
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data.ok) {
+                var printedOrderId = formData.get('order_id');
+                closePrintModal();
+                // Update the row to reflect printed status
+                var row = document.querySelector('tr.order-row[data-order-id="' + printedOrderId + '"]');
+                if (row) {
+                    row.classList.add('printed-row');
+                    var printBtn = row.querySelector('.btn-print');
+                    if (printBtn) {
+                        printBtn.textContent = 'Printed';
+                        printBtn.disabled = true;
+                    }
+                    var archiveBtn = row.querySelector('.btn-archive');
+                    if (archiveBtn) {
+                        archiveBtn.disabled = true;
+                    }
+                }
+            } else {
+                errorEl.textContent = data.error || 'Unknown error';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Print Labels';
+            }
+        })
+        .catch(function () {
+            errorEl.textContent = 'Network error — please try again.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Print Labels';
+        });
+    }
+
+    if (printCloseBtn) {
+        printCloseBtn.addEventListener('click', closePrintModal);
+    }
+
+    printModal.addEventListener('click', function (e) {
+        if (e.target === printModal) closePrintModal();
+    });
+
+    // Wire up all print buttons
+    document.querySelectorAll('.btn-print').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openPrintModal(btn.dataset.id, btn.dataset.orderNumber);
+        });
     });
 
     // ── Pagination: autoscroll table to top ─────────────────────────────────────
