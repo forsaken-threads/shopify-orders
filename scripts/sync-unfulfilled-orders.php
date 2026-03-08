@@ -266,7 +266,7 @@ while ($nextUrl !== null) {
                 $shopDomain,
                 $accessToken,
                 $apiVersion,
-                $productId
+                (string) $productId
             );
         }
 
