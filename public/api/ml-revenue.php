@@ -104,16 +104,9 @@ if ($dateMax !== null) {
 
 $where = implode(' AND ', $whereClauses);
 
-$havingClauses = ['total_ml > 0'];
-if ($volMin !== null) {
-    $havingClauses[] = 'total_ml >= :vol_min';
-    $params[':vol_min'] = $volMin;
-}
-if ($volMax !== null) {
-    $havingClauses[] = 'total_ml <= :vol_max';
-    $params[':vol_max'] = $volMax;
-}
-$having = implode(' AND ', $havingClauses);
+// Named parameters in HAVING are not reliably bound by PDO/SQLite; apply the
+// vol min/max filter in PHP after fetching (see below).
+$having = 'total_ml > 0';
 
 $sql = "
     SELECT
@@ -138,6 +131,15 @@ $sql = "
 $stmt = $db->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
+
+// Apply vol min/max filter in PHP — named params in HAVING are unreliable in
+// PDO/SQLite and silently evaluate to NULL, filtering every row.
+if ($volMin !== null) {
+    $rows = array_values(array_filter($rows, fn($r) => (int) $r['total_ml'] >= $volMin));
+}
+if ($volMax !== null) {
+    $rows = array_values(array_filter($rows, fn($r) => (int) $r['total_ml'] <= $volMax));
+}
 
 $points = array_map(fn($r) => [
     'product'        => $r['product'],
