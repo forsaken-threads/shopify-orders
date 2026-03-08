@@ -69,12 +69,11 @@ $totalPages  = max(1, (int) ceil($totalCount / $perPage));
 $currentPage = min($currentPage, $totalPages);
 $offset      = ($currentPage - 1) * $perPage;
 
-// ── Fetch orders with total item quantity and raw_data ─────────────────────────
+// ── Fetch orders (no raw_data or line items — loaded async on expand) ──────────
 
 $stmt = $db->prepare(<<<'SQL'
     SELECT o.id, o.shopify_order_id, o.order_number, o.customer_name, o.customer_email,
            o.total_price, o.currency, o.status, o.shopify_created_at, o.received_at,
-           o.raw_data,
            COALESCE(
                (SELECT SUM(li.quantity) FROM order_line_items li WHERE li.order_id = o.id),
                0
@@ -87,34 +86,7 @@ SQL);
 $stmt->execute([':status' => $filterStatus, ':limit' => $perPage, ':offset' => $offset]);
 $orders = $stmt->fetchAll();
 
-// ── Fetch line items for all orders on this page ──────────────────────────────
-
-$lineItemsByOrder = [];
-if (!empty($orders)) {
-    $orderIds    = array_column($orders, 'id');
-    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
-    $liStmt = $db->prepare(
-        "SELECT * FROM order_line_items WHERE order_id IN ({$placeholders}) ORDER BY order_id, id ASC"
-    );
-    $liStmt->execute($orderIds);
-    foreach ($liStmt->fetchAll() as $li) {
-        $lineItemsByOrder[(int) $li['order_id']][] = $li;
-    }
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-$detroitTz = new DateTimeZone('America/Detroit');
-
-function fmt(string $date): string
-{
-    global $detroitTz;
-    try {
-        return (new DateTimeImmutable($date))->setTimezone($detroitTz)->format('d M Y, H:i');
-    } catch (Exception) {
-        return $date;
-    }
-}
 
 function pageUrl(int $page, string $status): string
 {
@@ -186,14 +158,14 @@ require __DIR__ . '/partials/header.php';
             </thead>
             <tbody>
             <?php foreach ($orders as $order):
-                $oid      = (int) $order['id'];
-                $lineItems = $lineItemsByOrder[$oid] ?? [];
+                $oid = (int) $order['id'];
             ?>
                 <tr class="order-row" data-order-id="<?= $oid ?>">
                     <td class="col-expand">
                         <button class="btn-expand"
                                 aria-expanded="false"
                                 aria-controls="detail-<?= $oid ?>"
+                                data-order-id="<?= $oid ?>"
                                 title="Show order details">+</button>
                     </td>
                     <td><span class="order-num"><?= h($order['order_number']) ?></span></td>
@@ -206,7 +178,13 @@ require __DIR__ . '/partials/header.php';
                     </td>
                     <td class="qty hide-mobile"><?= (int) $order['total_quantity'] ?></td>
                     <td class="hide-mobile"><?= statusBadge($order['status']) ?></td>
-                    <td><?= h(fmt($order['shopify_created_at'])) ?></td>
+                    <td><?= h((function($d) {
+                        try {
+                            return (new DateTimeImmutable($d))
+                                ->setTimezone(new DateTimeZone('America/Detroit'))
+                                ->format('d M Y, H:i');
+                        } catch (Exception) { return $d; }
+                    })($order['shopify_created_at'])) ?></td>
                     <td>
                         <a class="btn-download"
                            href="download.php?id=<?= $oid ?>"
@@ -224,94 +202,14 @@ require __DIR__ . '/partials/header.php';
                     </td>
                     <?php endif; ?>
                 </tr>
+                <!-- Detail row — content loaded asynchronously on first expand -->
                 <tr class="order-detail-row" id="detail-<?= $oid ?>" hidden>
                     <td colspan="<?= $colCount ?>">
-                        <div class="order-detail">
-
-                            <div class="order-detail-meta">
-                                <dl class="order-meta-list">
-                                    <div>
-                                        <dt>Shopify Order ID</dt>
-                                        <dd><?= h($order['shopify_order_id']) ?></dd>
-                                    </div>
-                                    <div>
-                                        <dt>Order Number</dt>
-                                        <dd><?= h($order['order_number']) ?></dd>
-                                    </div>
-                                    <div>
-                                        <dt>Customer</dt>
-                                        <dd><?= h($order['customer_name']) ?>
-                                            <?php if ($order['customer_email']): ?>
-                                                &lt;<?= h($order['customer_email']) ?>&gt;
-                                            <?php endif; ?>
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt>Status</dt>
-                                        <dd><?= statusBadge($order['status']) ?></dd>
-                                    </div>
-                                    <div>
-                                        <dt>Total</dt>
-                                        <dd><?= h($order['currency']) ?> <?= h(number_format((float) $order['total_price'], 2)) ?></dd>
-                                    </div>
-                                    <div>
-                                        <dt>Order Date</dt>
-                                        <dd><?= h(fmt($order['shopify_created_at'])) ?></dd>
-                                    </div>
-                                    <div>
-                                        <dt>Received</dt>
-                                        <dd><?= h(fmt($order['received_at'])) ?></dd>
-                                    </div>
-                                </dl>
+                        <div class="order-detail" id="detail-content-<?= $oid ?>">
+                            <div class="detail-loading">
+                                <div class="detail-spinner"></div>
+                                Loading order details…
                             </div>
-
-                            <?php if (!empty($lineItems)): ?>
-                            <div class="order-detail-items">
-                                <h4>Line Items</h4>
-                                <table class="line-items-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Product</th>
-                                            <th>Variant</th>
-                                            <th>ML</th>
-                                            <th>SKU</th>
-                                            <th>Vendor</th>
-                                            <th>Brand</th>
-                                            <th>Qty</th>
-                                            <th>Unit Price</th>
-                                            <th>Line Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($lineItems as $li):
-                                        $unitPrice = (float) $li['price'];
-                                        $qty       = (int)   $li['quantity'];
-                                    ?>
-                                        <tr>
-                                            <td><?= h($li['title']) ?></td>
-                                            <td><?= h($li['variant_title'] ?? '') ?></td>
-                                            <td><?= $li['variant_ml'] !== null ? h((string) $li['variant_ml']) : '' ?></td>
-                                            <td><?= h($li['sku'] ?? '') ?></td>
-                                            <td><?= h($li['vendor'] ?? '') ?></td>
-                                            <td><?= h($li['custom_brand'] ?? '') ?></td>
-                                            <td><?= $qty ?></td>
-                                            <td><?= h(number_format($unitPrice, 2)) ?></td>
-                                            <td><?= h(number_format($unitPrice * $qty, 2)) ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <?php endif; ?>
-
-                            <div class="order-detail-actions">
-                                <button class="btn-raw-data"
-                                        data-order-id="<?= $oid ?>"
-                                        title="View raw Shopify order JSON">
-                                    { } View Raw Data
-                                </button>
-                            </div>
-
                         </div>
                     </td>
                 </tr>
@@ -379,20 +277,13 @@ require __DIR__ . '/partials/header.php';
             <span class="modal-title">Raw Order Data</span>
             <button id="modal-close" class="modal-close" aria-label="Close">&times;</button>
         </div>
+        <div id="modal-loading" class="modal-fetch-loading" hidden>
+            <div class="detail-spinner"></div>
+            Fetching raw data…
+        </div>
         <pre id="modal-json" class="modal-json"></pre>
     </div>
 </div>
-
-<!-- Embed raw_data keyed by order ID so JS can look it up without extra requests -->
-<script id="order-raw-data" type="application/json">
-<?= json_encode(
-    array_combine(
-        array_map(fn($o) => (string) $o['id'], $orders),
-        array_map(fn($o) => json_decode($o['raw_data'] ?? 'null'), $orders)
-    ),
-    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-) ?>
-</script>
 
 <style>
 /* ── Expand button ──────────────────────────────────────────────────────────── */
@@ -430,6 +321,28 @@ require __DIR__ . '/partials/header.php';
     background: var(--bg-subtle, #f9fafb);
     border-top: 1px solid var(--border, #e5e7eb);
 }
+
+/* ── Detail loading state ───────────────────────────────────────────────────── */
+.detail-loading {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: 1rem 0;
+    font-size: .875rem;
+    color: #888;
+}
+
+.detail-spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid #e2e8f0;
+    border-top-color: #1a1a2e;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Meta list (definition list grid) ──────────────────────────────────────── */
 .order-meta-list {
@@ -574,6 +487,17 @@ require __DIR__ . '/partials/header.php';
 
 .modal-close:hover { background: var(--bg-subtle, #f3f4f6); color: var(--text, #111827); }
 
+.modal-fetch-loading {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: 1.5rem 1.25rem;
+    font-size: .875rem;
+    color: #888;
+}
+
+.modal-fetch-loading[hidden] { display: none; }
+
 .modal-json {
     overflow: auto;
     padding: 1rem 1.25rem;
@@ -592,45 +516,195 @@ require __DIR__ . '/partials/header.php';
 (function () {
     'use strict';
 
-    // ── Raw data map (order id → parsed JSON) ──────────────────────────────────
-    var rawDataMap = {};
-    try {
-        rawDataMap = JSON.parse(document.getElementById('order-raw-data').textContent);
-    } catch (e) {}
+    // ── Date formatter (Detroit/Eastern time) ──────────────────────────────────
+    var dtFmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Detroit',
+        day:   '2-digit',
+        month: 'short',
+        year:  'numeric',
+        hour:  '2-digit',
+        minute:'2-digit',
+        hour12: false,
+    });
+
+    function fmtDate(dateStr) {
+        if (!dateStr) return '';
+        try {
+            var parts = {};
+            dtFmt.formatToParts(new Date(dateStr)).forEach(function (p) { parts[p.type] = p.value; });
+            return parts.day + ' ' + parts.month + ' ' + parts.year + ', ' + parts.hour + ':' + parts.minute;
+        } catch (e) {
+            return dateStr;
+        }
+    }
+
+    // ── HTML escaping ──────────────────────────────────────────────────────────
+    function esc(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ── Status badge ───────────────────────────────────────────────────────────
+    function statusBadge(status) {
+        var cls = {
+            pending:   'status-pending',
+            printed:   'status-printed',
+            fulfilled: 'status-fulfilled',
+            archived:  'status-archived',
+        }[status] || 'status-pending';
+        var label = status.charAt(0).toUpperCase() + status.slice(1);
+        return '<span class="status-badge ' + cls + '">' + esc(label) + '</span>';
+    }
+
+    // ── Render accordion detail HTML from API response ─────────────────────────
+    function renderDetail(data) {
+        var o  = data.order;
+        var li = data.line_items;
+
+        var customer = esc(o.customer_name);
+        if (o.customer_email) {
+            customer += ' &lt;' + esc(o.customer_email) + '&gt;';
+        }
+
+        var meta =
+            '<div class="order-detail-meta">' +
+            '<dl class="order-meta-list">' +
+            '<div><dt>Shopify Order ID</dt><dd>' + esc(o.shopify_order_id) + '</dd></div>' +
+            '<div><dt>Order Number</dt><dd>' + esc(o.order_number) + '</dd></div>' +
+            '<div><dt>Customer</dt><dd>' + customer + '</dd></div>' +
+            '<div><dt>Status</dt><dd>' + statusBadge(o.status) + '</dd></div>' +
+            '<div><dt>Total</dt><dd>' + esc(o.currency) + ' ' + Number(o.total_price).toFixed(2) + '</dd></div>' +
+            '<div><dt>Order Date</dt><dd>' + esc(fmtDate(o.shopify_created_at)) + '</dd></div>' +
+            '<div><dt>Received</dt><dd>' + esc(fmtDate(o.received_at)) + '</dd></div>' +
+            '</dl>' +
+            '</div>';
+
+        var items = '';
+        if (li && li.length > 0) {
+            var rows = li.map(function (item) {
+                var unitPrice = Number(item.price);
+                var qty       = Number(item.quantity);
+                return '<tr>' +
+                    '<td>' + esc(item.title) + '</td>' +
+                    '<td>' + esc(item.variant_title) + '</td>' +
+                    '<td>' + (item.variant_ml != null ? esc(String(item.variant_ml)) : '') + '</td>' +
+                    '<td>' + esc(item.sku) + '</td>' +
+                    '<td>' + esc(item.vendor) + '</td>' +
+                    '<td>' + esc(item.custom_brand) + '</td>' +
+                    '<td>' + qty + '</td>' +
+                    '<td>' + unitPrice.toFixed(2) + '</td>' +
+                    '<td>' + (unitPrice * qty).toFixed(2) + '</td>' +
+                    '</tr>';
+            }).join('');
+
+            items =
+                '<div class="order-detail-items">' +
+                '<h4>Line Items</h4>' +
+                '<table class="line-items-table"><thead><tr>' +
+                '<th>Product</th><th>Variant</th><th>ML</th><th>SKU</th>' +
+                '<th>Vendor</th><th>Brand</th><th>Qty</th><th>Unit Price</th><th>Line Total</th>' +
+                '</tr></thead><tbody>' + rows + '</tbody></table>' +
+                '</div>';
+        }
+
+        var actions =
+            '<div class="order-detail-actions">' +
+            '<button class="btn-raw-data" data-order-id="' + esc(String(o.id)) + '" title="View raw Shopify order JSON">' +
+            '{ } View Raw Data' +
+            '</button>' +
+            '</div>';
+
+        return meta + items + actions;
+    }
+
+    // ── Detail data cache (orderId → fetched API response) ────────────────────
+    var detailCache = {};
 
     // ── Accordion expand/collapse ──────────────────────────────────────────────
     document.querySelectorAll('.btn-expand').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            var expanded = btn.getAttribute('aria-expanded') === 'true';
-            var detailId = btn.getAttribute('aria-controls');
+            var expanded  = btn.getAttribute('aria-expanded') === 'true';
+            var detailId  = btn.getAttribute('aria-controls');
             var detailRow = document.getElementById(detailId);
+            var orderId   = btn.dataset.orderId;
             if (!detailRow) return;
 
             if (expanded) {
                 btn.setAttribute('aria-expanded', 'false');
                 btn.textContent = '+';
                 detailRow.hidden = true;
-            } else {
-                btn.setAttribute('aria-expanded', 'true');
-                btn.textContent = '−';
-                detailRow.hidden = false;
+                return;
             }
+
+            // Open
+            btn.setAttribute('aria-expanded', 'true');
+            btn.textContent = '−';
+            detailRow.hidden = false;
+
+            // If already fetched, nothing more to do.
+            if (detailCache[orderId]) return;
+
+            // Fetch order detail from API.
+            var contentEl = document.getElementById('detail-content-' + orderId);
+
+            fetch('api/order-detail.php?id=' + encodeURIComponent(orderId))
+                .then(function (res) {
+                    if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
+                    return res.json();
+                })
+                .then(function (data) {
+                    detailCache[orderId] = data;
+                    contentEl.innerHTML = renderDetail(data);
+                    // Wire up the raw-data button that was just rendered.
+                    var rawBtn = contentEl.querySelector('.btn-raw-data');
+                    if (rawBtn) rawBtn.addEventListener('click', handleRawDataClick);
+                })
+                .catch(function (err) {
+                    contentEl.innerHTML =
+                        '<div style="color:#b91c1c;padding:.5rem 0;font-size:.85rem;">' +
+                        'Failed to load order details: ' + esc(err.message) + '</div>';
+                });
         });
     });
 
     // ── Raw data modal ─────────────────────────────────────────────────────────
-    var modal   = document.getElementById('raw-data-modal');
-    var jsonPre = document.getElementById('modal-json');
-    var closeBtn = document.getElementById('modal-close');
+    var modal      = document.getElementById('raw-data-modal');
+    var jsonPre    = document.getElementById('modal-json');
+    var modalLoad  = document.getElementById('modal-loading');
+    var closeBtn   = document.getElementById('modal-close');
 
     function openModal(orderId) {
-        var data = rawDataMap[String(orderId)];
-        jsonPre.textContent = data !== undefined
-            ? JSON.stringify(data, null, 2)
-            : '(no data)';
+        jsonPre.textContent = '';
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
         closeBtn.focus();
+
+        if (detailCache[orderId]) {
+            // Already fetched via accordion — use cached raw_data.
+            modalLoad.hidden = true;
+            jsonPre.textContent = JSON.stringify(detailCache[orderId].order.raw_data, null, 2);
+            return;
+        }
+
+        // Not yet fetched — load on demand.
+        modalLoad.hidden = false;
+        fetch('api/order-detail.php?id=' + encodeURIComponent(orderId))
+            .then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
+                return res.json();
+            })
+            .then(function (data) {
+                detailCache[orderId] = data;
+                modalLoad.hidden = true;
+                jsonPre.textContent = JSON.stringify(data.order.raw_data, null, 2);
+            })
+            .catch(function (err) {
+                modalLoad.hidden = true;
+                jsonPre.textContent = 'Error loading data: ' + err.message;
+            });
     }
 
     function closeModal() {
@@ -638,11 +712,9 @@ require __DIR__ . '/partials/header.php';
         document.body.style.overflow = '';
     }
 
-    document.querySelectorAll('.btn-raw-data').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            openModal(btn.dataset.orderId);
-        });
-    });
+    function handleRawDataClick(e) {
+        openModal(e.currentTarget.dataset.orderId);
+    }
 
     if (closeBtn) {
         closeBtn.addEventListener('click', closeModal);
