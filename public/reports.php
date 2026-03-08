@@ -100,6 +100,8 @@ require __DIR__ . '/partials/header.php';
 
     .accordion-card.open .accordion-chevron { transform: rotate(180deg); }
 
+    .accordion-card.open { overflow: visible; }
+
     .accordion-body {
         display: none;
         padding: 0 1.5rem 1.5rem;
