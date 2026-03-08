@@ -8,3 +8,6 @@ shopify.ini
 orders.sqlite
 orders.sqlite-wal
 orders.sqlite-shm
+
+# Webhook log files
+logs/*.log

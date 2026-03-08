@@ -299,7 +299,7 @@ while ($nextUrl !== null) {
         $isBundle = (int) (bool) preg_match('/\bbundle\s*$/i', $title);
 
         // Fetch custom.brand metafield via API.
-        echo "  Fetching brand for product #{$shopifyProductId} "{$title}"…\n";
+        echo "  Fetching brand for product #{$shopifyProductId} \"{$title}\"…\n";
         $customBrand = fetchProductBrand($shopDomain, $accessToken, $apiVersion, $shopifyProductId, $brandCache);
 
         $rawData = json_encode($product, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -318,7 +318,7 @@ while ($nextUrl !== null) {
 
             $bundleTag = $isBundle ? ' [BUNDLE]' : '';
             $brandTag  = $customBrand !== null ? " (brand: {$customBrand})" : '';
-            echo "  Synced  "{$title}"{$bundleTag}{$brandTag}\n";
+            echo "  Synced  \"{$title}\"{$bundleTag}{$brandTag}\n";
             $synced++;
 
         } catch (Throwable $e) {

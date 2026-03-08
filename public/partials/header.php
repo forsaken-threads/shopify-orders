@@ -74,7 +74,7 @@ function h(mixed $v): string
         .main {
             flex: 1;
             padding: 2rem;
-            max-width: 1200px;
+            max-width: 85vw;
             margin: 0 auto;
             width: 100%;
         }
