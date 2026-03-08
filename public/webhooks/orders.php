@@ -55,6 +55,21 @@ if (!is_array($order) || empty($order['id'])) {
     exit('Unprocessable Entity');
 }
 
+// ── For non-fulfilled topics: only process paid orders ────────────────────────
+//
+// Drop orders whose financial_status is not 'paid' on create/update/paid topics.
+// The orders/paid topic always has financial_status=paid, but we check uniformly.
+
+if ($topic !== 'orders/fulfilled') {
+    $financialStatus = $order['financial_status'] ?? '';
+    if ($financialStatus !== 'paid') {
+        webhookLog(dirname(__DIR__, 2) . '/logs/orders.log', $order['name'] ?? (string) $order['id'], $topic . ' (dropped: not paid, status=' . $financialStatus . ')');
+        http_response_code(200);
+        echo 'OK';
+        exit;
+    }
+}
+
 // ── Handle orders/fulfilled — update status on locally stored orders ──────────
 //
 // When Shopify fires orders/fulfilled we only need to flip the local status.

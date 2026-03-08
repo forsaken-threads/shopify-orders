@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 /**
- * One-time sync of all active (non-draft) Shopify products into the local database.
+ * One-time sync of all Shopify products (active, draft, and archived) into the local database.
  *
- * Fetches every active product via the Shopify Admin REST API, resolves the
+ * Fetches every product via the Shopify Admin REST API, resolves the
  * custom.brand metafield for each product, and upserts the results into the
  * local products table.  Run this once after initial setup (or any time you
  * need to reconcile the local cache with Shopify).
@@ -240,16 +240,14 @@ $errors    = 0;
 $pageCount = 0;
 $brandCache = []; // product ID → ?string; shared across all pages
 
-// Fetch active products only (draft products are excluded).
-// status=active excludes drafts; archived products are included (status=active,archived
-// would be the alternative, but the user only asked to ignore drafts).
+// Fetch all products including draft, active, and archived.
 $nextUrl = sprintf(
-    'https://%s/admin/api/%s/products.json?status=active&limit=250',
+    'https://%s/admin/api/%s/products.json?status=active,draft,archived&limit=250',
     $shopDomain,
     rawurlencode($apiVersion)
 );
 
-echo "Starting product sync from {$shopDomain}…\n";
+echo "Starting product sync (active, draft, and archived) from {$shopDomain}…\n";
 
 while ($nextUrl !== null) {
     $pageCount++;
