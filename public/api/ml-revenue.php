@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Per-ML revenue endpoint for the scatter plot chart.
  *
- * GET /api/ml-revenue.php?period=<period>
+ * GET /api/ml-revenue.php?period=<period>[&vol_min=<int>][&vol_max=<int>]
  *
  * Computes revenue-per-ml for every non-bundle product that has at least one
  * variant with a known ml size.  All variants of a product are summed together
@@ -14,6 +14,9 @@ declare(strict_types=1);
  *   ytd          Year-to-date (Jan 1 of the current year through now)
  *   ttm          Trailing twelve months
  *   2024, 2025   Full calendar year
+ *   all          No date restriction (full order history)
+ *
+ * vol_min / vol_max  Optional integer filters on total ml sold per product.
  *
  * Requires HTTP Basic Auth (same credentials as the web UI).
  *
@@ -64,11 +67,16 @@ if ($period === 'ytd') {
     }
 }
 
-if ($dateMin === null && !ctype_digit($period)) {
+if ($dateMin === null && $period !== 'all') {
     http_response_code(400);
-    echo json_encode(['error' => 'Invalid period. Use ytd, ttm, or a year (e.g. 2024).']);
+    echo json_encode(['error' => 'Invalid period. Use ytd, ttm, all, or a year (e.g. 2024).']);
     exit;
 }
+
+// ── Volume filter params ───────────────────────────────────────────────────────
+
+$volMin = isset($_GET['vol_min']) && is_numeric($_GET['vol_min']) ? max(0, (int) $_GET['vol_min']) : null;
+$volMax = isset($_GET['vol_max']) && is_numeric($_GET['vol_max']) ? max(0, (int) $_GET['vol_max']) : null;
 
 $db = getDb($config);
 
@@ -96,6 +104,17 @@ if ($dateMax !== null) {
 
 $where = implode(' AND ', $whereClauses);
 
+$havingClauses = ['total_ml > 0'];
+if ($volMin !== null) {
+    $havingClauses[] = 'total_ml >= :vol_min';
+    $params[':vol_min'] = $volMin;
+}
+if ($volMax !== null) {
+    $havingClauses[] = 'total_ml <= :vol_max';
+    $params[':vol_max'] = $volMax;
+}
+$having = implode(' AND ', $havingClauses);
+
 $sql = "
     SELECT
         p.title                                                           AS product,
@@ -112,7 +131,7 @@ $sql = "
     JOIN  products          p ON p.shopify_product_id = oli.shopify_product_id
     WHERE {$where}
     GROUP BY oli.shopify_product_id
-    HAVING total_ml > 0
+    HAVING {$having}
     ORDER BY revenue_per_ml DESC
 ";
 
