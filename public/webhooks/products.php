@@ -22,8 +22,8 @@ declare(strict_types=1);
  * scripts/sync-products.php is run to populate that column.
  */
 
-$config = require __DIR__ . '/../config.php';
-require __DIR__ . '/../db.php';
+$config = require __DIR__ . '/../../app/config.php';
+require __DIR__ . '/../../app/db.php';
 
 // ── Validate HTTP method ──────────────────────────────────────────────────────
 

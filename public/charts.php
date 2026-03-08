@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$config = require __DIR__ . '/config.php';
+$config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/auth.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
@@ -15,7 +15,7 @@ for ($y = 2024; $y < $currentYear; $y++) {
 
 $pageTitle  = 'Charts - Utility App';
 $activePage = 'charts';
-require __DIR__ . '/partials/header.php';
+require __DIR__ . '/../app/partials/header.php';
 ?>
 <style>
     /* ── Charts page layout ── */
@@ -595,4 +595,4 @@ require __DIR__ . '/partials/header.php';
 }());
 </script>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php require __DIR__ . '/../app/partials/footer.php'; ?>

@@ -14,8 +14,8 @@ declare(strict_types=1);
  * once to populate the table, then keep it current via the products webhook.
  */
 
-$config = require __DIR__ . '/../config.php';
-require __DIR__ . '/../db.php';
+$config = require __DIR__ . '/../../app/config.php';
+require __DIR__ . '/../../app/db.php';
 
 // ── Validate HTTP method ──────────────────────────────────────────────────────
 

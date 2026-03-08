@@ -22,7 +22,7 @@ declare(strict_types=1);
  * to be set in env.ini (or as real environment variables).
  */
 
-$config = require __DIR__ . '/config.php';
+$config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/auth.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);

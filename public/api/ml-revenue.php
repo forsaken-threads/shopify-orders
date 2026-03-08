@@ -38,9 +38,9 @@ declare(strict_types=1);
  * revenue_per_ml = total_revenue / total_ml
  */
 
-$config = require __DIR__ . '/../config.php';
+$config = require __DIR__ . '/../../app/config.php';
 require __DIR__ . '/../auth.php';
-require __DIR__ . '/../db.php';
+require __DIR__ . '/../../app/db.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
 

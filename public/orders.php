@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
 
-$config = require __DIR__ . '/config.php';
-require __DIR__ . '/db.php';
+$config = require __DIR__ . '/../app/config.php';
+require __DIR__ . '/../app/db.php';
 require __DIR__ . '/auth.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
@@ -112,7 +112,7 @@ $colCount = $filterStatus === 'pending' ? 9 : 8;
 
 $pageTitle  = 'Orders - Utility App';
 $activePage = 'orders';
-require __DIR__ . '/partials/header.php';
+require __DIR__ . '/../app/partials/header.php';
 ?>
 
 <div class="main">
@@ -766,4 +766,4 @@ require __DIR__ . '/partials/header.php';
 }());
 </script>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php require __DIR__ . '/../app/partials/footer.php'; ?>
