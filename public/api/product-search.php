@@ -41,10 +41,11 @@ if (mb_strlen($q) < 2) {
 function normalizeForSearch(string $s): string
 {
     // Decompose characters into base + combining marks, then drop the marks.
-    $s = normalizer_normalize($s, Normalizer::FORM_D);
-    if ($s === false) {
+    $normalized = normalizer_normalize($s, Normalizer::FORM_D);
+    if ($normalized === false) {
         return mb_strtolower($s);
     }
+    $s = $normalized;
     // Remove combining diacritical marks (U+0300–U+036F).
     $s = preg_replace('/[\x{0300}-\x{036F}]/u', '', $s) ?? $s;
     return mb_strtolower($s);
