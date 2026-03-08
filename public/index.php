@@ -1,8 +1,16 @@
 <?php
 declare(strict_types=1);
 
+$config = require __DIR__ . '/../app/config.php';
+require __DIR__ . '/auth.php';
+
+$isLoggedIn = isset($_SERVER['PHP_AUTH_USER'])
+    && hash_equals($config['auth_user'],     $_SERVER['PHP_AUTH_USER'])
+    && hash_equals($config['auth_password'], $_SERVER['PHP_AUTH_PW'] ?? '');
+
 $pageTitle  = 'Home - Utility App';
 $activePage = null;
+$hideNav    = !$isLoggedIn;
 require __DIR__ . '/../app/partials/header.php';
 ?>
 <style>
@@ -92,7 +100,9 @@ require __DIR__ . '/../app/partials/header.php';
         <p class="hero-subtitle">
             Manage and review your Shopify orders in one place.
         </p>
+        <?php if (!$isLoggedIn): ?>
         <a class="btn-login" href="orders.php">Log in to view orders</a>
+        <?php endif; ?>
     </div>
 </main>
 

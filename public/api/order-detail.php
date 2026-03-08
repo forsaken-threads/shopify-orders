@@ -75,7 +75,7 @@ if (!$order) {
 }
 
 $liStmt = $db->prepare(
-    "SELECT title, variant_title, variant_ml, sku, vendor, quantity, price, custom_brand
+    "SELECT title, variant_title, variant_ml, sku, vendor, quantity, price, custom_brand, shopify_product_id
      FROM   order_line_items
      WHERE  order_id = ?
      ORDER  BY id ASC"
@@ -104,6 +104,7 @@ echo json_encode([
         'sku'          => $li['sku'] ?? '',
         'vendor'       => $li['vendor'] ?? '',
         'custom_brand' => $li['custom_brand'] ?? '',
+        'shopify_product_id' => $li['shopify_product_id'] ?? '',
         'quantity'     => (int) $li['quantity'],
         'price'        => (float) $li['price'],
     ], $lineItems),

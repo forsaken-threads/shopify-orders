@@ -43,4 +43,14 @@ echo "Installed $CRON_DEST"
 install -o root -g root -m 644 "$REPO_ROOT/artifacts/logrotate.conf" "$LOGROTATE_DEST"
 echo "Installed $LOGROTATE_DEST"
 
+# ── nginx config ─────────────────────────────────────────────────────────────
+
+NGINX_DEST="/home/redrover/environments/php84/servers/utility.decantalize.com.conf"
+
+install -o "$LOG_USER" -g "$LOG_USER" -m 644 "$REPO_ROOT/artifacts/nginx.conf" "$NGINX_DEST"
+echo "Installed $NGINX_DEST"
+
+sudo -u "$LOG_USER" /home/redrover/bin/rsa php84
+echo "Sent SIGHUP to php84 nginx (config reload)"
+
 echo "Done."
