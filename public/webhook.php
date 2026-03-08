@@ -123,7 +123,7 @@ $customerName = trim(
     ($order['customer']['last_name']  ?? '')
 );
 $customerEmail = $order['customer']['email'] ?? $order['email'] ?? '';
-$totalPrice    = $order['total_price'] ?? '0.00';
+$totalPrice    = (float) ($order['total_price'] ?? 0.0);
 $currency      = $order['currency']    ?? 'USD';
 $createdAt     = $order['created_at']  ?? date('c');
 
@@ -167,9 +167,11 @@ try {
 
     $lineStmt = $db->prepare(<<<'SQL'
         INSERT INTO order_line_items
-            (order_id, shopify_line_item_id, title, variant_title, sku, vendor, quantity, price, custom_brand)
+            (order_id, shopify_line_item_id, shopify_product_id, title, variant_title, variant_ml,
+             sku, vendor, quantity, price, custom_brand)
         VALUES
-            (:order_id, :line_item_id, :title, :variant_title, :sku, :vendor, :quantity, :price, :custom_brand)
+            (:order_id, :line_item_id, :shopify_product_id, :title, :variant_title, :variant_ml,
+             :sku, :vendor, :quantity, :price, :custom_brand)
     SQL);
 
     foreach ($order['line_items'] ?? [] as $item) {
@@ -191,16 +193,24 @@ try {
             }
         }
 
+        $variantTitle = $item['variant_title'] ?? null;
+        $variantMl    = null;
+        if ($variantTitle !== null && preg_match('/^(\d+)\s*ml$/i', $variantTitle, $m)) {
+            $variantMl = (int) $m[1];
+        }
+
         $lineStmt->execute([
-            ':order_id'      => $orderId,
-            ':line_item_id'  => (string) ($item['id'] ?? ''),
-            ':title'         => (string) ($item['title'] ?? ''),
-            ':variant_title' => $item['variant_title'] ?? null,
-            ':sku'           => $item['sku']            ?? null,
-            ':vendor'        => $item['vendor']         ?? null,
-            ':quantity'      => (int)    ($item['quantity'] ?? 1),
-            ':price'         => (string) ($item['price']    ?? '0.00'),
-            ':custom_brand'  => $customBrand,
+            ':order_id'          => $orderId,
+            ':line_item_id'      => (string) ($item['id'] ?? ''),
+            ':shopify_product_id' => $productId !== '' ? $productId : null,
+            ':title'             => (string) ($item['title'] ?? ''),
+            ':variant_title'     => $variantTitle,
+            ':variant_ml'        => $variantMl,
+            ':sku'               => $item['sku']    ?? null,
+            ':vendor'            => $item['vendor'] ?? null,
+            ':quantity'          => (int)   ($item['quantity'] ?? 1),
+            ':price'             => (float) ($item['price']    ?? 0.0),
+            ':custom_brand'      => $customBrand,
         ]);
     }
 
