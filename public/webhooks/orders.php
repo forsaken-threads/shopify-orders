@@ -130,6 +130,10 @@ if (!empty($productIds)) {
 
 $shopifyId    = (string) $order['id'];
 $orderNumber  = (string) ($order['order_number'] ?? $order['name'] ?? $order['id']);
+
+// Derive local status from Shopify's fulfillment_status so orders that are
+// already fulfilled when first received are not stored as pending.
+$initialStatus = ($order['fulfillment_status'] ?? null) === 'fulfilled' ? 'fulfilled' : 'pending';
 $customerName = trim(
     ($order['customer']['first_name'] ?? '') . ' ' .
     ($order['customer']['last_name']  ?? '')
@@ -142,15 +146,17 @@ $createdAt     = $order['created_at']  ?? date('c');
 try {
     $db->beginTransaction();
 
-    // Upsert the order; preserve existing status so a re-delivery doesn't
-    // reset a manually-updated status back to 'pending'.
+    // Upsert the order; on conflict preserve existing status so a re-delivery
+    // doesn't reset a manually-updated status (e.g. 'printed') back to pending.
+    // On initial insert, use the derived $initialStatus so already-fulfilled
+    // orders are stored correctly rather than defaulting to 'pending'.
     $db->prepare(<<<'SQL'
         INSERT INTO orders
             (shopify_order_id, order_number, customer_name, customer_email,
-             total_price, currency, raw_data, shopify_created_at)
+             total_price, currency, status, raw_data, shopify_created_at)
         VALUES
             (:shopify_id, :order_number, :customer_name, :customer_email,
-             :total_price, :currency, :raw_data, :created_at)
+             :total_price, :currency, :status, :raw_data, :created_at)
         ON CONFLICT(shopify_order_id) DO UPDATE SET
             order_number   = excluded.order_number,
             customer_name  = excluded.customer_name,
@@ -165,6 +171,7 @@ try {
         ':customer_email' => $customerEmail,
         ':total_price'    => $totalPrice,
         ':currency'       => $currency,
+        ':status'         => $initialStatus,
         ':raw_data'       => $rawBody,
         ':created_at'     => $createdAt,
     ]);
