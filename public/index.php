@@ -1,125 +1,85 @@
 <?php
 declare(strict_types=1);
-?><!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home - Utility App</title>
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: #f0f2f5;
-            color: #1a1a2e;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
+$pageTitle  = 'Home - Utility App';
+$activePage = null;
+require __DIR__ . '/partials/header.php';
+?>
+<style>
+    .home-main {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2rem;
+    }
 
-        .navbar {
-            background: #1a1a2e;
-            padding: .875rem 2rem;
-            display: flex;
-            align-items: center;
-        }
+    .hero {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.09);
+        padding: 3rem 3.5rem;
+        max-width: 480px;
+        width: 100%;
+        text-align: center;
+    }
 
-        .navbar-brand {
-            font-size: .95rem;
-            font-weight: 700;
-            color: #fff;
-            text-decoration: none;
-            letter-spacing: .03em;
-        }
+    .hero-logo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        background: #1a1a2e;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+    }
 
-        .main {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 3rem 2rem;
-        }
+    .hero-logo svg {
+        width: 1.4rem;
+        height: 1.4rem;
+        fill: none;
+        stroke: #fff;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
 
-        .hero {
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,.09);
-            padding: 3rem 3.5rem;
-            max-width: 480px;
-            width: 100%;
-            text-align: center;
-        }
+    .hero h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: .5rem;
+        line-height: 1.25;
+    }
 
-        .hero-logo {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 3rem;
-            height: 3rem;
-            background: #1a1a2e;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-        }
+    .hero-subtitle {
+        font-size: .9rem;
+        color: #666;
+        margin-bottom: 2rem;
+        line-height: 1.5;
+    }
 
-        .hero-logo svg {
-            width: 1.4rem;
-            height: 1.4rem;
-            fill: none;
-            stroke: #fff;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
+    .btn-login {
+        display: inline-block;
+        padding: .65rem 1.75rem;
+        background: #1a1a2e;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 7px;
+        font-size: .9rem;
+        font-weight: 600;
+        letter-spacing: .01em;
+        transition: background .15s;
+    }
 
-        .hero h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: .5rem;
-            line-height: 1.25;
-        }
+    .btn-login:hover { background: #2d2d5e; }
 
-        .hero-subtitle {
-            font-size: .9rem;
-            color: #666;
-            margin-bottom: 2rem;
-            line-height: 1.5;
-        }
+    @media (max-width: 540px) {
+        .hero { padding: 2rem 1.5rem; }
+    }
+</style>
 
-        .btn-login {
-            display: inline-block;
-            padding: .65rem 1.75rem;
-            background: #1a1a2e;
-            color: #fff;
-            text-decoration: none;
-            border-radius: 7px;
-            font-size: .9rem;
-            font-weight: 600;
-            letter-spacing: .01em;
-            transition: background .15s;
-        }
-
-        .btn-login:hover { background: #2d2d5e; }
-
-        .footer {
-            text-align: center;
-            padding: 1.5rem;
-            font-size: .75rem;
-            color: #aaa;
-        }
-
-        @media (max-width: 540px) {
-            .hero { padding: 2rem 1.5rem; }
-        }
-    </style>
-</head>
-<body>
-
-<nav class="navbar">
-    <a class="navbar-brand" href="index.php">Utility App</a>
-</nav>
-
-<main class="main">
+<main class="home-main">
     <div class="hero">
         <div class="hero-logo">
             <svg viewBox="0 0 24 24">
@@ -136,9 +96,4 @@ declare(strict_types=1);
     </div>
 </main>
 
-<footer class="footer">
-    &copy; <?= date('Y') ?> Utility App &middot; Decantalize
-</footer>
-
-</body>
-</html>
+<?php require __DIR__ . '/partials/footer.php'; ?>

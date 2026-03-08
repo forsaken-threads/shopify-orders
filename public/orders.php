@@ -9,7 +9,8 @@ requireBasicAuth($config['auth_user'], $config['auth_password']);
 
 // ── AJAX: Archive action ───────────────────────────────────────────────────────
 // POST ?action=archive  body: id=<int>
-// Returns JSON {ok:true} or {ok:false,error:"..."} with appropriate HTTP status.
+// Transitions a pending order to archived status.
+// Returns JSON {ok:true} or {ok:false,error:"..."}.
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'archive') {
     header('Content-Type: application/json');
@@ -27,14 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'archiv
     );
     $stmt->execute([$id]);
 
-    if ($stmt->rowCount() === 0) {
-        // Either not found or already not pending — treat as OK so the UI
-        // can still hide the row.
-        http_response_code(200);
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-
     http_response_code(200);
     echo json_encode(['ok' => true]);
     exit;
@@ -42,27 +35,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'archiv
 
 $db = getDb($config);
 
-// Pagination parameters.
+// ── Status filter ─────────────────────────────────────────────────────────────
+
+$validStatuses = ['pending', 'printed', 'fulfilled', 'archived'];
+$filterStatus  = $_GET['status'] ?? 'pending';
+if (!in_array($filterStatus, $validStatuses, strict: true)) {
+    $filterStatus = 'pending';
+}
+
+// Count per-status for the filter tab badges.
+$statusCounts = array_fill_keys($validStatuses, 0);
+$countsStmt   = $db->query(
+    "SELECT status, COUNT(*) AS cnt FROM orders
+     WHERE status IN ('pending','printed','fulfilled','archived')
+     GROUP BY status"
+);
+foreach ($countsStmt->fetchAll() as $row) {
+    if (array_key_exists($row['status'], $statusCounts)) {
+        $statusCounts[$row['status']] = (int) $row['cnt'];
+    }
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+
 $perPage     = 25;
 $currentPage = max(1, (int) ($_GET['page'] ?? 1));
+
+$countStmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE status = ?");
+$countStmt->execute([$filterStatus]);
+$totalCount = (int) $countStmt->fetchColumn();
+
+$totalPages  = max(1, (int) ceil($totalCount / $perPage));
+$currentPage = min($currentPage, $totalPages);
 $offset      = ($currentPage - 1) * $perPage;
 
-// Total pending count for badge and pagination.
-$totalPending = (int) $db->query("SELECT COUNT(*) FROM orders WHERE status = 'pending'")->fetchColumn();
-$totalPages   = max(1, (int) ceil($totalPending / $perPage));
-$currentPage  = min($currentPage, $totalPages);
-$offset       = ($currentPage - 1) * $perPage;
+// ── Fetch orders with total item quantity ─────────────────────────────────────
 
-// Fetch the current page of pending orders (oldest first).
 $stmt = $db->prepare(<<<'SQL'
-    SELECT id, order_number, customer_name, customer_email,
-           total_price, currency, shopify_created_at, received_at
-    FROM   orders
-    WHERE  status = 'pending'
-    ORDER  BY shopify_created_at ASC
+    SELECT o.id, o.order_number, o.customer_name, o.customer_email,
+           o.total_price, o.currency, o.status, o.shopify_created_at, o.received_at,
+           COALESCE(
+               (SELECT SUM(li.quantity) FROM order_line_items li WHERE li.order_id = o.id),
+               0
+           ) AS total_quantity
+    FROM   orders o
+    WHERE  o.status = :status
+    ORDER  BY o.shopify_created_at ASC
     LIMIT  :limit OFFSET :offset
 SQL);
-$stmt->execute([':limit' => $perPage, ':offset' => $offset]);
+$stmt->execute([':status' => $filterStatus, ':limit' => $perPage, ':offset' => $offset]);
 $orders = $stmt->fetchAll();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,294 +97,53 @@ function fmt(string $date): string
     }
 }
 
-function h(mixed $v): string
+function pageUrl(int $page, string $status): string
 {
-    return htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    return '?status=' . urlencode($status) . '&page=' . $page;
 }
 
-function pageUrl(int $page): string
+function statusBadge(string $status): string
 {
-    return '?page=' . $page;
+    $class = match ($status) {
+        'pending'   => 'status-pending',
+        'printed'   => 'status-printed',
+        'fulfilled' => 'status-fulfilled',
+        'archived'  => 'status-archived',
+        default     => 'status-pending',
+    };
+    return '<span class="status-badge ' . $class . '">' . ucfirst(htmlspecialchars($status, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')) . '</span>';
 }
 
-?><!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pending Orders - Utility App</title>
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: #f0f2f5;
-            color: #1a1a2e;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* ── Navbar ── */
-        .navbar {
-            background: #1a1a2e;
-            padding: .875rem 2rem;
-            display: flex;
-            align-items: center;
-            gap: 2rem;
-        }
-
-        .navbar-brand {
-            font-size: .95rem;
-            font-weight: 700;
-            color: #fff;
-            text-decoration: none;
-            letter-spacing: .03em;
-        }
-
-        /* ── Main ── */
-        .main {
-            flex: 1;
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-            width: 100%;
-        }
-
-        .page-header {
-            display: flex;
-            align-items: baseline;
-            gap: 1rem;
-            margin-bottom: 1.75rem;
-        }
-
-        h1 {
-            font-size: 1.4rem;
-            font-weight: 700;
-        }
-
-        .subtitle {
-            font-size: .875rem;
-            color: #666;
-        }
-
-        .badge-count {
-            background: #e53e3e;
-            color: #fff;
-            font-size: .72rem;
-            font-weight: 700;
-            padding: .2em .55em;
-            border-radius: 99px;
-            vertical-align: middle;
-        }
-
-        /* ── Card / Table ── */
-        .card {
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.08);
-            overflow: hidden;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        thead {
-            background: #1a1a2e;
-            color: #fff;
-        }
-
-        th {
-            padding: .75rem 1rem;
-            text-align: left;
-            font-size: .78rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            white-space: nowrap;
-        }
-
-        td {
-            padding: .8rem 1rem;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: .88rem;
-            vertical-align: middle;
-        }
-
-        tbody tr:last-child td { border-bottom: none; }
-        tbody tr:hover td { background: #fafafa; }
-
-        .order-num {
-            font-weight: 700;
-            font-size: .95rem;
-        }
-
-        .customer-email {
-            font-size: .78rem;
-            color: #888;
-            margin-top: .18rem;
-        }
-
-        .price {
-            font-variant-numeric: tabular-nums;
-            white-space: nowrap;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: .25em .7em;
-            border-radius: 5px;
-            font-size: .75rem;
-            font-weight: 600;
-            background: #fff8e1;
-            color: #b45309;
-            border: 1px solid #fde68a;
-        }
-
-        .btn-download {
-            display: inline-block;
-            padding: .4rem 1rem;
-            background: #1a1a2e;
-            color: #fff;
-            text-decoration: none;
-            border-radius: 6px;
-            font-size: .8rem;
-            font-weight: 500;
-            white-space: nowrap;
-            transition: background .15s;
-        }
-
-        .btn-download:hover { background: #2d2d5e; }
-
-        .btn-archive {
-            display: inline-block;
-            padding: .4rem 1rem;
-            background: transparent;
-            color: #888;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: .8rem;
-            font-weight: 500;
-            white-space: nowrap;
-            cursor: pointer;
-            transition: background .15s, color .15s, border-color .15s;
-        }
-
-        .btn-archive:hover {
-            background: #fff1f2;
-            color: #b91c1c;
-            border-color: #fca5a5;
-        }
-
-        .btn-archive:disabled {
-            opacity: .45;
-            cursor: default;
-        }
-
-        /* Row fades out after archiving but stays in DOM until navigation. */
-        tr.archived-row td {
-            opacity: .35;
-            text-decoration: line-through;
-            pointer-events: none;
-        }
-
-        tr.archived-row .btn-archive {
-            pointer-events: none;
-            opacity: .35;
-        }
-
-        .empty-state {
-            padding: 4rem 2rem;
-            text-align: center;
-            color: #aaa;
-        }
-
-        .empty-state p { margin-top: .5rem; font-size: .875rem; }
-
-        /* ── Pagination ── */
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem 1.25rem;
-            border-top: 1px solid #f0f0f0;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .pagination-info {
-            font-size: .82rem;
-            color: #666;
-        }
-
-        .pagination-controls {
-            display: flex;
-            align-items: center;
-            gap: .35rem;
-        }
-
-        .page-link {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 2rem;
-            height: 2rem;
-            padding: 0 .6rem;
-            border-radius: 5px;
-            font-size: .82rem;
-            font-weight: 500;
-            text-decoration: none;
-            color: #1a1a2e;
-            border: 1px solid #e2e8f0;
-            transition: background .15s, border-color .15s;
-            white-space: nowrap;
-        }
-
-        .page-link:hover { background: #f0f0f5; border-color: #c8d0e0; }
-        .page-link.active { background: #1a1a2e; color: #fff; border-color: #1a1a2e; cursor: default; }
-        .page-link.disabled { opacity: .38; pointer-events: none; }
-
-        .page-ellipsis {
-            font-size: .82rem;
-            color: #999;
-            padding: 0 .25rem;
-        }
-
-        @media (max-width: 700px) {
-            .main { padding: 1rem; }
-            .navbar { padding: .75rem 1rem; }
-            .hide-mobile { display: none; }
-            .pagination { justify-content: center; }
-            .pagination-info { width: 100%; text-align: center; }
-        }
-    </style>
-</head>
-<body>
-
-<nav class="navbar">
-    <a class="navbar-brand" href="index.php">Utility App</a>
-</nav>
+$pageTitle  = 'Orders - Utility App';
+$activePage = 'orders';
+require __DIR__ . '/partials/header.php';
+?>
 
 <div class="main">
 
     <div class="page-header">
-        <h1>Pending Orders
-            <?php if ($totalPending > 0): ?>
-                <span class="badge-count"><?= $totalPending ?></span>
-            <?php endif; ?>
-        </h1>
-        <?php if ($totalPending > 0): ?>
+        <h1>Orders</h1>
+        <?php if ($totalCount > 0): ?>
             <span class="subtitle">Page <?= $currentPage ?> of <?= $totalPages ?></span>
         <?php endif; ?>
+    </div>
+
+    <!-- Status filter tabs -->
+    <div class="filter-bar">
+        <?php foreach ($validStatuses as $s): ?>
+            <a href="?status=<?= urlencode($s) ?>"
+               class="filter-link<?= $filterStatus === $s ? ' active' : '' ?>">
+                <?= ucfirst($s) ?>
+                <span class="filter-count"><?= $statusCounts[$s] ?></span>
+            </a>
+        <?php endforeach; ?>
     </div>
 
     <div class="card">
         <?php if (empty($orders)): ?>
             <div class="empty-state">
-                <strong>All clear!</strong>
-                <p>There are no pending orders right now.</p>
+                <strong>No <?= h($filterStatus) ?> orders.</strong>
+                <p>There are no orders with this status right now.</p>
             </div>
         <?php else: ?>
         <table>
@@ -372,11 +152,12 @@ function pageUrl(int $page): string
                     <th>Order</th>
                     <th>Customer</th>
                     <th class="hide-mobile">Total</th>
+                    <th class="hide-mobile">Items</th>
                     <th class="hide-mobile">Status</th>
                     <th>Order Date</th>
                     <th class="hide-mobile">Received</th>
                     <th></th>
-                    <th></th>
+                    <?php if ($filterStatus === 'pending'): ?><th></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -390,7 +171,8 @@ function pageUrl(int $page): string
                     <td class="price hide-mobile">
                         <?= h($order['currency']) ?> <?= h(number_format((float) $order['total_price'], 2)) ?>
                     </td>
-                    <td class="hide-mobile"><span class="status-badge">Pending</span></td>
+                    <td class="qty hide-mobile"><?= (int) $order['total_quantity'] ?></td>
+                    <td class="hide-mobile"><?= statusBadge($order['status']) ?></td>
                     <td><?= h(fmt($order['shopify_created_at'])) ?></td>
                     <td class="hide-mobile"><?= h(fmt($order['received_at'])) ?></td>
                     <td>
@@ -400,6 +182,7 @@ function pageUrl(int $page): string
                             ↓ CSV
                         </a>
                     </td>
+                    <?php if ($filterStatus === 'pending'): ?>
                     <td>
                         <button class="btn-archive"
                                 data-id="<?= (int) $order['id'] ?>"
@@ -407,6 +190,7 @@ function pageUrl(int $page): string
                             Archive
                         </button>
                     </td>
+                    <?php endif; ?>
                 </tr>
             <?php endforeach; ?>
             </tbody>
@@ -417,17 +201,15 @@ function pageUrl(int $page): string
             <div class="pagination-info">
                 <?php
                 $firstItem = $offset + 1;
-                $lastItem  = min($offset + $perPage, $totalPending);
-                echo "Showing {$firstItem}–{$lastItem} of {$totalPending} pending orders";
+                $lastItem  = min($offset + $perPage, $totalCount);
+                echo "Showing {$firstItem}–{$lastItem} of {$totalCount} " . h($filterStatus) . " orders";
                 ?>
             </div>
             <div class="pagination-controls">
-                <!-- Previous -->
                 <a class="page-link<?= $currentPage <= 1 ? ' disabled' : '' ?>"
-                   href="<?= pageUrl($currentPage - 1) ?>">&#8592; Prev</a>
+                   href="<?= pageUrl($currentPage - 1, $filterStatus) ?>">&#8592; Prev</a>
 
                 <?php
-                // Build the page number window: always show first, last, and up to 3 around current.
                 $window = [];
                 for ($p = max(1, $currentPage - 2); $p <= min($totalPages, $currentPage + 2); $p++) {
                     $window[] = $p;
@@ -437,7 +219,7 @@ function pageUrl(int $page): string
                 $showLast  = !in_array($totalPages, $window, true);
 
                 if ($showFirst) {
-                    echo '<a class="page-link" href="' . pageUrl(1) . '">1</a>';
+                    echo '<a class="page-link" href="' . pageUrl(1, $filterStatus) . '">1</a>';
                     if (!in_array(2, $window, true)) {
                         echo '<span class="page-ellipsis">&hellip;</span>';
                     }
@@ -445,20 +227,19 @@ function pageUrl(int $page): string
 
                 foreach ($window as $p) {
                     $active = $p === $currentPage ? ' active' : '';
-                    echo '<a class="page-link' . $active . '" href="' . pageUrl($p) . '">' . $p . '</a>';
+                    echo '<a class="page-link' . $active . '" href="' . pageUrl($p, $filterStatus) . '">' . $p . '</a>';
                 }
 
                 if ($showLast) {
                     if (!in_array($totalPages - 1, $window, true)) {
                         echo '<span class="page-ellipsis">&hellip;</span>';
                     }
-                    echo '<a class="page-link" href="' . pageUrl($totalPages) . '">' . $totalPages . '</a>';
+                    echo '<a class="page-link" href="' . pageUrl($totalPages, $filterStatus) . '">' . $totalPages . '</a>';
                 }
                 ?>
 
-                <!-- Next -->
                 <a class="page-link<?= $currentPage >= $totalPages ? ' disabled' : '' ?>"
-                   href="<?= pageUrl($currentPage + 1) ?>">Next &#8594;</a>
+                   href="<?= pageUrl($currentPage + 1, $filterStatus) ?>">Next &#8594;</a>
             </div>
         </div>
         <?php endif; ?>
@@ -507,5 +288,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-</body>
-</html>
+<?php require __DIR__ . '/partials/footer.php'; ?>

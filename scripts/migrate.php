@@ -26,6 +26,8 @@ $pdo = new PDO(
 $pdo->exec('PRAGMA journal_mode = WAL');
 $pdo->exec('PRAGMA foreign_keys = ON');
 
+// ── Orders ────────────────────────────────────────────────────────────────────
+
 $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS orders (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +61,45 @@ $pdo->exec(<<<'SQL'
     CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status);
     CREATE INDEX IF NOT EXISTS idx_orders_created   ON orders(shopify_created_at);
     CREATE INDEX IF NOT EXISTS idx_line_items_order ON order_line_items(order_id);
+SQL);
+
+// ── Products ──────────────────────────────────────────────────────────────────
+//
+// Local cache of Shopify products.  Populated by scripts/sync-products.php and
+// kept up-to-date by the products webhook (public/webhooks/products.php).
+//
+// is_bundle = 1 when the product title ends with the word "bundle"
+//             (case-insensitive).  Used to identify bundle products that have
+//             component relationships tracked in bundle_components.
+//
+// Draft products are ignored and never stored here.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS products (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        shopify_product_id TEXT    NOT NULL UNIQUE,
+        title              TEXT    NOT NULL DEFAULT '',
+        vendor             TEXT,
+        status             TEXT    NOT NULL DEFAULT 'active',
+        custom_brand       TEXT,
+        is_bundle          INTEGER NOT NULL DEFAULT 0,
+        raw_data           TEXT    NOT NULL DEFAULT '',
+        shopify_created_at TEXT,
+        synced_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Join table that records which products are components of a bundle product.
+    -- Populated separately; the migration creates the structure for future use.
+    CREATE TABLE IF NOT EXISTS bundle_components (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        bundle_product_id    INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        component_product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        UNIQUE(bundle_product_id, component_product_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_products_shopify_id     ON products(shopify_product_id);
+    CREATE INDEX IF NOT EXISTS idx_products_is_bundle      ON products(is_bundle);
+    CREATE INDEX IF NOT EXISTS idx_bundle_components_bundle ON bundle_components(bundle_product_id);
 SQL);
 
 echo "Migration complete.\n";
