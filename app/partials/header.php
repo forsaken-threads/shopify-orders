@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 $activePage ??= null;
+$hideNav    ??= false;
 
 function h(mixed $v): string
 {
@@ -435,9 +436,11 @@ function toggleAccordion(cardId) {
 
 <nav class="navbar">
     <a class="navbar-brand" href="index.php">Utility App</a>
+    <?php if (!$hideNav): ?>
     <ul class="navbar-nav">
         <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>
         <li><a class="nav-link<?= $activePage === 'reports' ? ' active' : '' ?>" href="reports.php">Reports</a></li>
         <li><a class="nav-link<?= $activePage === 'charts'  ? ' active' : '' ?>" href="charts.php">Charts</a></li>
     </ul>
+    <?php endif; ?>
 </nav>
