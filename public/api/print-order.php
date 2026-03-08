@@ -86,7 +86,7 @@ $labelEntries = '';
 
 foreach ($items as $item) {
     $title         = trim((string) ($item['title'] ?? ''));
-    $brand         = (string) ($item['custom_brand'] ?? '');
+    $brand         = trim((string) ($item['custom_brand'] ?? ''));
     $originalBrand = (string) ($item['original_brand'] ?? '');
     $fullTitle     = trim((string) ($item['full_title'] ?? ''));
     $productId     = trim((string) ($item['shopify_product_id'] ?? ''));
