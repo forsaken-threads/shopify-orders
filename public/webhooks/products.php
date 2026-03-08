@@ -68,6 +68,7 @@ $shopifyProductId = (string) $product['id'];
 
 if ($topic === 'products/delete') {
     $db->prepare('DELETE FROM products WHERE shopify_product_id = ?')->execute([$shopifyProductId]);
+    webhookLog(dirname(__DIR__, 2) . '/logs/products.log', (string) ($product['title'] ?? $shopifyProductId), $topic);
     http_response_code(200);
     echo 'OK';
     exit;
@@ -138,10 +139,18 @@ try {
     exit('Internal Server Error');
 }
 
+webhookLog(dirname(__DIR__, 2) . '/logs/products.log', $title, $topic);
+
 http_response_code(200);
 echo 'OK';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function webhookLog(string $file, string $identifier, string $topic): void
+{
+    $line = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $identifier, $topic);
+    @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
+}
 
 function verifyShopifyHmac(string $secret, string $rawBody): bool
 {
