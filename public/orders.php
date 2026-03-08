@@ -116,6 +116,7 @@ require __DIR__ . '/../app/partials/header.php';
                 <p>There are no orders with this status right now.</p>
             </div>
         <?php else: ?>
+        <div class="table-scroll" id="table-scroll">
         <table>
             <thead>
                 <tr>
@@ -190,6 +191,7 @@ require __DIR__ . '/../app/partials/header.php';
             <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
 
         <?php if ($totalPages > 1): ?>
         <div class="pagination">
@@ -260,6 +262,40 @@ require __DIR__ . '/../app/partials/header.php';
 </div>
 
 <style>
+/* ── Viewport-locked layout (no page scroll) ───────────────────────────────── */
+html, body { height: 100vh; overflow: hidden; }
+body { min-height: 0; }
+
+.main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.page-header { flex-shrink: 0; }
+.filter-bar  { flex-shrink: 0; }
+
+.card {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.card > table   { flex: 1; min-height: 0; }
+.card > .pagination { flex-shrink: 0; }
+
+/* ── Sticky table header ───────────────────────────────────────────────────── */
+.table-scroll thead { position: sticky; top: 0; z-index: 2; }
+.table-scroll thead th { background: #1a1a2e; }
+
 /* ── Expand button ──────────────────────────────────────────────────────────── */
 .col-expand { width: 2rem; padding-right: 0; }
 
@@ -673,6 +709,14 @@ require __DIR__ . '/../app/partials/header.php';
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+
+    // ── Pagination: autoscroll table to top ─────────────────────────────────────
+    var tableScroll = document.getElementById('table-scroll');
+    document.querySelectorAll('.pagination .page-link').forEach(function (link) {
+        link.addEventListener('click', function () {
+            if (tableScroll) tableScroll.scrollTop = 0;
+        });
     });
 
     // ── Archive ────────────────────────────────────────────────────────────────
