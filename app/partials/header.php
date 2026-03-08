@@ -280,9 +280,158 @@ function h(mixed $v): string
             .pagination { justify-content: center; }
             .pagination-info { width: 100%; text-align: center; }
         }
+
+        /* ── Accordion (shared by charts.php and reports.php) ── */
+        .accordion { display: flex; flex-direction: column; gap: 1rem; }
+
+        .accordion-card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08);
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.25rem 1.5rem;
+            cursor: pointer;
+            user-select: none;
+            transition: background .15s;
+        }
+
+        .accordion-header:hover { background: #fafafa; }
+
+        .accordion-header-icon {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.4rem;
+            height: 2.4rem;
+            background: #f0f2f5;
+            border-radius: 8px;
+        }
+
+        .accordion-header-icon svg {
+            width: 1.2rem;
+            height: 1.2rem;
+            fill: none;
+            stroke: #1a1a2e;
+            stroke-width: 1.75;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .accordion-header-text { flex: 1; }
+        .accordion-header-text h2 { font-size: 1rem; font-weight: 700; margin-bottom: .15rem; }
+        .accordion-header-text p  { font-size: .8rem; color: #888; line-height: 1.4; }
+
+        .accordion-chevron { flex-shrink: 0; color: #aaa; transition: transform .2s ease; }
+
+        .accordion-chevron svg {
+            width: 1.1rem;
+            height: 1.1rem;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            display: block;
+        }
+
+        .accordion-card.open .accordion-chevron { transform: rotate(180deg); }
+        .accordion-card.open { overflow: visible; }
+
+        .accordion-body {
+            display: none;
+            padding: 0 1.5rem 1.5rem;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .accordion-card.open .accordion-body { display: block; }
+
+        /* ── Shared spinner ── */
+        .spinner {
+            width: 1.1rem;
+            height: 1.1rem;
+            border: 2px solid #e2e8f0;
+            border-top-color: #1a1a2e;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 480px) {
+            .accordion-header { padding: 1rem; }
+            .accordion-body   { padding: 0 1rem 1rem; }
+        }
     </style>
 </head>
 <body>
+
+<script>
+/* ── Shared JS utilities (available to all pages) ──────────────────────────── */
+
+// Timezone for displaying order dates; set via DISPLAY_TIMEZONE in env.ini.
+var APP_TIMEZONE = <?= json_encode($config['display_timezone'] ?? 'America/Detroit') ?>;
+
+// CSRF token for state-changing API requests (archive, etc.).
+var CSRF_TOKEN = <?= json_encode($_SESSION['csrf_token'] ?? '') ?>;
+
+/**
+ * Escape a value for safe insertion into HTML.
+ * Handles null/undefined gracefully.
+ */
+function escHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/**
+ * Format an ISO date string in APP_TIMEZONE.
+ * Returns the original string on parse failure.
+ */
+(function () {
+    var _fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: APP_TIMEZONE,
+        day:    '2-digit',
+        month:  'short',
+        year:   'numeric',
+        hour:   '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+
+    window.fmtDate = function (dateStr) {
+        if (!dateStr) return '';
+        try {
+            var parts = {};
+            _fmt.formatToParts(new Date(dateStr)).forEach(function (p) { parts[p.type] = p.value; });
+            return parts.day + ' ' + parts.month + ' ' + parts.year + ', ' + parts.hour + ':' + parts.minute;
+        } catch (e) {
+            return dateStr;
+        }
+    };
+}());
+
+/**
+ * Toggle an accordion card open/closed.
+ * Called via onclick="toggleAccordion('card-id')" in charts.php and reports.php.
+ */
+function toggleAccordion(cardId) {
+    var card   = document.getElementById(cardId);
+    var isOpen = card.classList.contains('open');
+    card.classList.toggle('open', !isOpen);
+    card.querySelector('.accordion-header').setAttribute('aria-expanded', String(!isOpen));
+}
+</script>
 
 <nav class="navbar">
     <a class="navbar-brand" href="index.php">Utility App</a>

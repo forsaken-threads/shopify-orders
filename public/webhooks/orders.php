@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 $config = require __DIR__ . '/../../app/config.php';
 require __DIR__ . '/../../app/db.php';
+require __DIR__ . '/../../app/webhook.php';
 
 // ── Validate HTTP method ──────────────────────────────────────────────────────
 
@@ -263,23 +264,3 @@ try {
 http_response_code(200);
 echo 'OK';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function webhookLog(string $file, string $identifier, string $topic): void
-{
-    $line = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $identifier, $topic);
-    @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
-}
-
-function verifyShopifyHmac(string $secret, string $rawBody): bool
-{
-    if ($secret === '') {
-        return false;
-    }
-    $provided = $_SERVER['HTTP_X_SHOPIFY_HMAC_SHA256'] ?? '';
-    if ($provided === '') {
-        return false;
-    }
-    $computed = base64_encode(hash_hmac('sha256', $rawBody, $secret, binary: true));
-    return hash_equals($computed, $provided);
-}

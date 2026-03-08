@@ -27,95 +27,6 @@ require __DIR__ . '/../app/partials/header.php';
         width: 100%;
     }
 
-    /* ── Accordion cards (same as reports.php) ── */
-    .accordion {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .accordion-card {
-        background: #fff;
-        border-radius: 10px;
-        box-shadow: 0 1px 4px rgba(0,0,0,.08);
-        overflow: hidden;
-    }
-
-    .accordion-header {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 1.25rem 1.5rem;
-        cursor: pointer;
-        user-select: none;
-        transition: background .15s;
-    }
-
-    .accordion-header:hover { background: #fafafa; }
-
-    .accordion-header-icon {
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 2.4rem;
-        height: 2.4rem;
-        background: #f0f2f5;
-        border-radius: 8px;
-    }
-
-    .accordion-header-icon svg {
-        width: 1.2rem;
-        height: 1.2rem;
-        fill: none;
-        stroke: #1a1a2e;
-        stroke-width: 1.75;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-    }
-
-    .accordion-header-text { flex: 1; }
-
-    .accordion-header-text h2 {
-        font-size: 1rem;
-        font-weight: 700;
-        margin-bottom: .15rem;
-    }
-
-    .accordion-header-text p {
-        font-size: .8rem;
-        color: #888;
-        line-height: 1.4;
-    }
-
-    .accordion-chevron {
-        flex-shrink: 0;
-        color: #aaa;
-        transition: transform .2s ease;
-    }
-
-    .accordion-chevron svg {
-        width: 1.1rem;
-        height: 1.1rem;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        display: block;
-    }
-
-    .accordion-card.open .accordion-chevron { transform: rotate(180deg); }
-    .accordion-card.open { overflow: visible; }
-
-    .accordion-body {
-        display: none;
-        padding: 0 1.5rem 1.5rem;
-        border-top: 1px solid #f0f0f0;
-    }
-
-    .accordion-card.open .accordion-body { display: block; }
-
     /* ── Filter bar ── */
     .filter-bar {
         display: flex;
@@ -216,18 +127,6 @@ require __DIR__ . '/../app/partials/header.php';
 
     .chart-loading.visible { display: flex; }
 
-    .spinner {
-        width: 1.1rem;
-        height: 1.1rem;
-        border: 2px solid #e2e8f0;
-        border-top-color: #1a1a2e;
-        border-radius: 50%;
-        animation: spin .7s linear infinite;
-        flex-shrink: 0;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
     .chart-error {
         display: none;
         padding: .8rem 1rem;
@@ -274,10 +173,6 @@ require __DIR__ . '/../app/partials/header.php';
         .chart-canvas-wrap { height: 320px; }
     }
 
-    @media (max-width: 480px) {
-        .accordion-header { padding: 1rem; }
-        .accordion-body { padding: 0 1rem 1rem; }
-    }
 </style>
 
 <div class="charts-wrap">
@@ -370,16 +265,9 @@ require __DIR__ . '/../app/partials/header.php';
 (function () {
     'use strict';
 
-    // ── Accordion ──────────────────────────────────────────────────────────────
-
-    window.toggleAccordion = function (cardId) {
-        const card   = document.getElementById(cardId);
-        const isOpen = card.classList.contains('open');
-        card.classList.toggle('open', !isOpen);
-        card.querySelector('.accordion-header').setAttribute('aria-expanded', String(!isOpen));
-    };
-
     // ── Per-ML Revenue chart ───────────────────────────────────────────────────
+    // toggleAccordion is provided by app/partials/header.php.
+    // Wrap it to auto-load the chart when this accordion first opens.
 
     const loadingEl    = document.getElementById('ml-loading');
     const errorEl      = document.getElementById('ml-error');

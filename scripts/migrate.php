@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 $projectRoot = dirname(__DIR__);
 $config      = require $projectRoot . '/public/config.php';
+require $projectRoot . '/app/normalize.php';
 
 $pdo = new PDO(
     dsn: 'sqlite:' . $config['db_path'],
@@ -118,5 +119,42 @@ try {
 // Create the deleted_at index after the column is guaranteed to exist (whether
 // the table was just created or the column was just added via ALTER TABLE above).
 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_products_deleted_at ON products(deleted_at)');
+
+// ── Add missing indexes ────────────────────────────────────────────────────────
+//
+// These indexes were absent from the original migration and are added here
+// idempotently.  orders.shopify_order_id is looked up on every webhook upsert;
+// order_line_items.shopify_product_id is joined in analytics queries.
+
+$pdo->exec('CREATE INDEX IF NOT EXISTS idx_orders_shopify_id        ON orders(shopify_order_id)');
+$pdo->exec('CREATE INDEX IF NOT EXISTS idx_line_items_product_id    ON order_line_items(shopify_product_id)');
+
+// ── Add normalized_title to products ──────────────────────────────────────────
+//
+// Pre-computed lowercase, diacritic-stripped title used by product-search.php
+// for accent-insensitive matching via a simple SQL LIKE query, without loading
+// all product titles into PHP memory.
+
+try {
+    $pdo->exec('ALTER TABLE products ADD COLUMN normalized_title TEXT');
+    echo "Added normalized_title column to products table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+$pdo->exec('CREATE INDEX IF NOT EXISTS idx_products_normalized_title ON products(normalized_title)');
+
+// Backfill normalized_title for any existing rows that don't have it yet.
+$toBackfill = $pdo
+    ->query("SELECT id, title FROM products WHERE normalized_title IS NULL")
+    ->fetchAll();
+
+if (!empty($toBackfill)) {
+    $backfillStmt = $pdo->prepare("UPDATE products SET normalized_title = ? WHERE id = ?");
+    foreach ($toBackfill as $row) {
+        $backfillStmt->execute([normalizeTitle($row['title']), $row['id']]);
+    }
+    echo "Backfilled normalized_title for " . count($toBackfill) . " product(s).\n";
+}
 
 echo "Migration complete.\n";

@@ -56,4 +56,8 @@ return [
     'shopify_ini_path'       => $shopifyIniPath,
     'auth_user'              => (string) (getenv('AUTH_USER')              ?: 'admin'),
     'auth_password'          => (string) (getenv('AUTH_PASSWORD')          ?: 'changeme'),
+    // Timezone used when displaying order dates in the web UI.
+    // Set DISPLAY_TIMEZONE in env.ini to any valid PHP timezone identifier,
+    // e.g. America/New_York, Europe/London, Australia/Sydney.
+    'display_timezone'       => (string) (getenv('DISPLAY_TIMEZONE')       ?: 'America/Detroit'),
 ];
