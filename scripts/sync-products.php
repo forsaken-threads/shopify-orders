@@ -3,15 +3,27 @@
 declare(strict_types=1);
 
 /**
- * One-time sync of all Shopify products (active, draft, and archived) into the local database.
+ * Sync Shopify products (active, draft, and archived) into the local database.
  *
- * Fetches every product via the Shopify Admin REST API, resolves the
- * custom.brand metafield for each product, and upserts the results into the
- * local products table.  Run this once after initial setup (or any time you
- * need to reconcile the local cache with Shopify).
+ * Fetches products via the Shopify Admin REST API using updated_at_min to
+ * limit the query to recently changed products, resolves the custom.brand
+ * metafield for each product, and upserts the results into the local products
+ * table.
  *
  * Usage:
- *   php scripts/sync-products.php
+ *   php scripts/sync-products.php [--all-products]
+ *
+ * Options:
+ *   --all-products   Fetch every product regardless of when it was last
+ *                    updated (full catalogue sync).
+ *                    Default behaviour fetches only products updated in the
+ *                    prior 25 hours, suitable for a daily cron job that
+ *                    catches anything missed by webhooks without re-scanning
+ *                    the entire catalogue.
+ *
+ * Note on deletions: the REST API never returns deleted products — they simply
+ * disappear from the listing.  Handle product deletions via the
+ * products/delete webhook instead.
  *
  * Requirements:
  *   - env.ini (copied from env.ini.example) with SHOPIFY_* values filled in.
@@ -29,6 +41,10 @@ declare(strict_types=1);
 $projectRoot = dirname(__DIR__);
 $config      = require $projectRoot . '/public/config.php';
 require $projectRoot . '/public/db.php';
+
+// ── Parse arguments ───────────────────────────────────────────────────────────
+
+$allProducts = in_array('--all-products', $argv ?? [], true);
 
 // ── Validate configuration ────────────────────────────────────────────────────
 
@@ -240,14 +256,32 @@ $errors    = 0;
 $pageCount = 0;
 $brandCache = []; // product ID → ?string; shared across all pages
 
-// Fetch all products including draft, active, and archived.
+// Build the initial URL.
+// Default: updated in the prior 25 hours so a daily cron catches anything
+// missed by webhooks without re-scanning the entire catalogue.
+// --all-products: no date filter, fetches the full catalogue.
+$queryParams = [
+    'status' => 'active,draft,archived',
+    'limit'  => '250',
+];
+
+if (!$allProducts) {
+    // 25 hours ago in ISO 8601 UTC — comfortable overlap window for daily cron.
+    $queryParams['updated_at_min'] = date('c', time() - (25 * 3600));
+}
+
 $nextUrl = sprintf(
-    'https://%s/admin/api/%s/products.json?status=active,draft,archived&limit=250',
+    'https://%s/admin/api/%s/products.json?%s',
     $shopDomain,
-    rawurlencode($apiVersion)
+    rawurlencode($apiVersion),
+    http_build_query($queryParams)
 );
 
-echo "Starting product sync (active, draft, and archived) from {$shopDomain}…\n";
+$modeLabel = $allProducts ? 'full catalogue' : 'prior 25 hours';
+echo "Starting product sync ({$modeLabel}) from {$shopDomain}…\n";
+if (!$allProducts) {
+    echo "  Updated after: {$queryParams['updated_at_min']}\n";
+}
 
 while ($nextUrl !== null) {
     $pageCount++;
