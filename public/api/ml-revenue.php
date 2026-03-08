@@ -26,6 +26,7 @@ declare(strict_types=1);
  *       "variant":         "100 ml",
  *       "ml":              100,
  *       "total_units":     <int>,
+ *       "total_ml":        <int>,
  *       "total_revenue":   <float>,
  *       "revenue_per_ml":  <float>
  *     }, ...
@@ -34,6 +35,8 @@ declare(strict_types=1);
  *
  * revenue_per_ml = total_revenue / (total_units * ml)
  *   i.e., the average selling price per ml across all sales of that variant.
+ * total_ml = total_units * ml
+ *   i.e., total millilitres sold of that variant across the period.
  */
 
 $config = require __DIR__ . '/../config.php';
@@ -103,6 +106,7 @@ $sql = "
         COALESCE(NULLIF(oli.variant_title, ''), 'Default')               AS variant,
         oli.variant_ml                                                    AS ml,
         SUM(oli.quantity)                                                 AS total_units,
+        SUM(oli.quantity) * oli.variant_ml                               AS total_ml,
         ROUND(SUM(oli.quantity * oli.price), 2)                          AS total_revenue,
         ROUND(
             SUM(oli.quantity * oli.price) /
@@ -127,6 +131,7 @@ $points = array_map(fn($r) => [
     'variant'        => $r['variant'],
     'ml'             => (int)   $r['ml'],
     'total_units'    => (int)   $r['total_units'],
+    'total_ml'       => (int)   $r['total_ml'],
     'total_revenue'  => (float) $r['total_revenue'],
     'revenue_per_ml' => (float) $r['revenue_per_ml'],
 ], $rows);

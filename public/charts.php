@@ -390,27 +390,28 @@ require __DIR__ . '/partials/header.php';
         if (emptyEl) emptyEl.style.display = 'none';
         canvas.style.display = '';
 
-        // Build dataset: x = ml, y = revenue_per_ml
-        // Color by ml size for visual grouping (hue based on ml bucket)
+        // Build dataset: x = total ml sold (units × bottle size), y = revenue_per_ml
+        // Color by bottle size for visual grouping (hue based on ml bucket)
         const chartData = points.map(function (p) {
             return {
-                x:             p.ml,
+                x:             p.total_ml,
                 y:             p.revenue_per_ml,
                 // Extra data for tooltip
                 product:       p.product,
                 variant:       p.variant,
+                ml:            p.ml,
                 total_units:   p.total_units,
                 total_revenue: p.total_revenue,
             };
         });
 
-        // Assign colors by ml bucket so same-size variants cluster visually.
-        const mlValues  = [...new Set(points.map(p => p.ml))].sort((a, b) => a - b);
-        const palette   = generatePalette(mlValues.length);
+        // Assign colors by bottle size so same-size variants share a color.
+        const mlValues   = [...new Set(points.map(p => p.ml))].sort((a, b) => a - b);
+        const palette    = generatePalette(mlValues.length);
         const mlColorMap = {};
         mlValues.forEach(function (ml, i) { mlColorMap[ml] = palette[i]; });
 
-        const pointColors = chartData.map(p => mlColorMap[p.x] || 'rgba(26,26,46,0.7)');
+        const pointColors = chartData.map(p => mlColorMap[p.ml] || 'rgba(26,26,46,0.7)');
 
         if (chartInstance) {
             chartInstance.destroy();
@@ -443,7 +444,8 @@ require __DIR__ . '/partials/header.php';
                             label: function (item) {
                                 const d = item.raw;
                                 return [
-                                    'ML size: ' + d.x + ' ml',
+                                    'Bottle size: ' + d.ml + ' ml',
+                                    'Total ml sold: ' + Number(d.x).toLocaleString() + ' ml',
                                     '$/ml: $' + Number(d.y).toFixed(4),
                                     'Units sold: ' + Number(d.total_units).toLocaleString(),
                                     'Revenue: $' + Number(d.total_revenue).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}),
@@ -458,12 +460,12 @@ require __DIR__ . '/partials/header.php';
                     x: {
                         title: {
                             display: true,
-                            text:    'Variant Size (ml)',
+                            text:    'Total ML Sold',
                             font:    { size: 12, weight: '600' },
                             color:   '#444',
                         },
                         ticks: {
-                            callback: function (v) { return v + ' ml'; },
+                            callback: function (v) { return Number(v).toLocaleString() + ' ml'; },
                             color: '#666',
                         },
                         grid: { color: '#f0f0f0' },
