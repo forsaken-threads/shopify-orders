@@ -7,6 +7,39 @@ require __DIR__ . '/auth.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
 
+// ── AJAX: Archive action ───────────────────────────────────────────────────────
+// POST ?action=archive  body: id=<int>
+// Returns JSON {ok:true} or {ok:false,error:"..."} with appropriate HTTP status.
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['action'] ?? '') === 'archive') {
+    header('Content-Type: application/json');
+
+    $id = (int) ($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Invalid order ID.']);
+        exit;
+    }
+
+    $db = getDb($config);
+    $stmt = $db->prepare(
+        "UPDATE orders SET status = 'archived' WHERE id = ? AND status = 'pending'"
+    );
+    $stmt->execute([$id]);
+
+    if ($stmt->rowCount() === 0) {
+        // Either not found or already not pending — treat as OK so the UI
+        // can still hide the row.
+        http_response_code(200);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    http_response_code(200);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
 $db = getDb($config);
 
 // Pagination parameters.
@@ -204,6 +237,43 @@ function pageUrl(int $page): string
 
         .btn-download:hover { background: #2d2d5e; }
 
+        .btn-archive {
+            display: inline-block;
+            padding: .4rem 1rem;
+            background: transparent;
+            color: #888;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: .8rem;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+
+        .btn-archive:hover {
+            background: #fff1f2;
+            color: #b91c1c;
+            border-color: #fca5a5;
+        }
+
+        .btn-archive:disabled {
+            opacity: .45;
+            cursor: default;
+        }
+
+        /* Row fades out after archiving but stays in DOM until navigation. */
+        tr.archived-row td {
+            opacity: .35;
+            text-decoration: line-through;
+            pointer-events: none;
+        }
+
+        tr.archived-row .btn-archive {
+            pointer-events: none;
+            opacity: .35;
+        }
+
         .empty-state {
             padding: 4rem 2rem;
             text-align: center;
@@ -306,6 +376,7 @@ function pageUrl(int $page): string
                     <th>Order Date</th>
                     <th class="hide-mobile">Received</th>
                     <th></th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -328,6 +399,13 @@ function pageUrl(int $page): string
                            title="Download CSV for order <?= h($order['order_number']) ?>">
                             ↓ CSV
                         </a>
+                    </td>
+                    <td>
+                        <button class="btn-archive"
+                                data-id="<?= (int) $order['id'] ?>"
+                                title="Archive order <?= h($order['order_number']) ?>">
+                            Archive
+                        </button>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -389,6 +467,45 @@ function pageUrl(int $page): string
     </div>
 
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.btn-archive').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id  = btn.dataset.id;
+            var row = btn.closest('tr');
+
+            btn.disabled = true;
+            btn.textContent = 'Archiving…';
+
+            var body = new URLSearchParams();
+            body.append('id', id);
+
+            fetch('orders.php?action=archive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    row.classList.add('archived-row');
+                    btn.textContent = 'Archived';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Archive';
+                    alert('Could not archive order: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Archive';
+                alert('Network error — please try again.');
+            });
+        });
+    });
+});
+</script>
 
 </body>
 </html>
