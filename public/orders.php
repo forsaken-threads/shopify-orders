@@ -850,9 +850,9 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
 
     function stripBrandPrefix(title, brand) {
         if (!brand) return title;
-        // Strip leading "Brand - " or "Brand: " prefix that matches custom_brand
-        var re = new RegExp('^' + brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-:]\\s*', 'i');
-        return title.replace(re, '');
+        // Strip leading brand name prefix and trim the remaining title
+        var re = new RegExp('^' + brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'i');
+        return title.replace(re, '').trim();
     }
 
     function renderPrintForm(data) {
