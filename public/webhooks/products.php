@@ -9,8 +9,8 @@ declare(strict_types=1);
  *
  * Authentication: X-Shopify-Hmac-Sha256 header verified against SHOPIFY_WEBHOOK_SECRET.
  *
- * Products in draft status are ignored (not stored).  Active and archived
- * products are upserted into the local products table.
+ * Products in all statuses (active, draft, archived) are upserted into the
+ * local products table.
  *
  * is_bundle is set to 1 when a product title ends with the word "bundle"
  * (case-insensitive match), allowing bundle products to be identified without
@@ -74,17 +74,9 @@ if ($topic === 'products/delete') {
     exit;
 }
 
-// ── Ignore draft products ─────────────────────────────────────────────────────
-
-$status = $product['status'] ?? 'active';
-if ($status === 'draft') {
-    http_response_code(200);
-    echo 'OK';
-    exit;
-}
-
 // ── Build field values ────────────────────────────────────────────────────────
 
+$status    = (string) ($product['status'] ?? 'active');
 $title     = (string) ($product['title'] ?? '');
 $vendor    = isset($product['vendor']) && $product['vendor'] !== '' ? (string) $product['vendor'] : null;
 $createdAt = isset($product['created_at']) && $product['created_at'] !== '' ? (string) $product['created_at'] : null;
