@@ -131,9 +131,17 @@ if (!empty($productIds)) {
 $shopifyId    = (string) $order['id'];
 $orderNumber  = (string) ($order['order_number'] ?? $order['name'] ?? $order['id']);
 
-// Derive local status from Shopify's fulfillment_status so orders that are
-// already fulfilled when first received are not stored as pending.
-$initialStatus = ($order['fulfillment_status'] ?? null) === 'fulfilled' ? 'fulfilled' : 'pending';
+// Derive local status from Shopify's financial/fulfillment status so orders
+// that are already fulfilled or fully refunded when first received are not
+// stored as pending.
+$financialStatus = $order['financial_status'] ?? '';
+if ($financialStatus === 'refunded') {
+    $initialStatus = 'archived';
+} elseif (($order['fulfillment_status'] ?? null) === 'fulfilled') {
+    $initialStatus = 'fulfilled';
+} else {
+    $initialStatus = 'pending';
+}
 $customerName = trim(
     ($order['customer']['first_name'] ?? '') . ' ' .
     ($order['customer']['last_name']  ?? '')
@@ -175,6 +183,14 @@ try {
         ':raw_data'       => $rawBody,
         ':created_at'     => $createdAt,
     ]);
+
+    // If the order is now fully refunded, archive it regardless of any existing
+    // status (the ON CONFLICT clause above intentionally preserves status on
+    // re-delivery, so we handle this override explicitly).
+    if ($financialStatus === 'refunded') {
+        $db->prepare("UPDATE orders SET status = 'archived' WHERE shopify_order_id = ? AND status != 'archived'")
+            ->execute([$shopifyId]);
+    }
 
     // Fetch the internal ID reliably.
     $idStmt = $db->prepare('SELECT id FROM orders WHERE shopify_order_id = ?');

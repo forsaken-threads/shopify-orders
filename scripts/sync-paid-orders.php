@@ -362,9 +362,16 @@ while ($nextUrl !== null) {
             );
         }
 
-        // Derive local status from Shopify's fulfillment_status so orders that
-        // are already fulfilled when first synced are not stored as pending.
-        $status = ($order['fulfillment_status'] ?? null) === 'fulfilled' ? 'fulfilled' : 'pending';
+        // Derive local status from Shopify's financial/fulfillment status so
+        // orders that are already fulfilled or fully refunded when first synced
+        // are not stored as pending.
+        if ($financialStatus === 'refunded') {
+            $status = 'archived';
+        } elseif (($order['fulfillment_status'] ?? null) === 'fulfilled') {
+            $status = 'fulfilled';
+        } else {
+            $status = 'pending';
+        }
 
         // Build field values.
         $orderNumber  = (string) ($order['order_number'] ?? $order['name'] ?? $order['id']);
