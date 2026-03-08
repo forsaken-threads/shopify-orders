@@ -85,7 +85,8 @@ $pdo->exec(<<<'SQL'
         is_bundle          INTEGER NOT NULL DEFAULT 0,
         raw_data           TEXT    NOT NULL DEFAULT '',
         shopify_created_at TEXT,
-        synced_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+        synced_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+        deleted_at         TEXT
     );
 
     -- Join table that records which products are components of a bundle product.
@@ -97,9 +98,22 @@ $pdo->exec(<<<'SQL'
         UNIQUE(bundle_product_id, component_product_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_products_shopify_id     ON products(shopify_product_id);
-    CREATE INDEX IF NOT EXISTS idx_products_is_bundle      ON products(is_bundle);
+    CREATE INDEX IF NOT EXISTS idx_products_shopify_id      ON products(shopify_product_id);
+    CREATE INDEX IF NOT EXISTS idx_products_is_bundle       ON products(is_bundle);
+    CREATE INDEX IF NOT EXISTS idx_products_deleted_at      ON products(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_bundle_components_bundle ON bundle_components(bundle_product_id);
 SQL);
+
+// ── Add deleted_at to existing databases ──────────────────────────────────────
+//
+// ALTER TABLE ADD COLUMN fails if the column already exists, so we catch and
+// ignore the error — idempotent for databases created after the column was added.
+
+try {
+    $pdo->exec('ALTER TABLE products ADD COLUMN deleted_at TEXT');
+    echo "Added deleted_at column to products table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
 
 echo "Migration complete.\n";

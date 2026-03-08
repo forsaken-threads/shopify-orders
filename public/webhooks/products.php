@@ -67,7 +67,9 @@ $shopifyProductId = (string) $product['id'];
 // ── Handle products/delete ────────────────────────────────────────────────────
 
 if ($topic === 'products/delete') {
-    $db->prepare('DELETE FROM products WHERE shopify_product_id = ?')->execute([$shopifyProductId]);
+    $db->prepare(
+        "UPDATE products SET deleted_at = datetime('now'), synced_at = datetime('now') WHERE shopify_product_id = ?"
+    )->execute([$shopifyProductId]);
     webhookLog(dirname(__DIR__, 2) . '/logs/products.log', (string) ($product['title'] ?? $shopifyProductId), $topic);
     http_response_code(200);
     echo 'OK';

@@ -245,16 +245,22 @@ $productStmt = $db->prepare(<<<'SQL'
         is_bundle          = excluded.is_bundle,
         raw_data           = excluded.raw_data,
         shopify_created_at = excluded.shopify_created_at,
+        deleted_at         = NULL,
         synced_at          = datetime('now')
 SQL);
 
 // ── Main sync loop ────────────────────────────────────────────────────────────
 
-$synced    = 0;
-$skipped   = 0;
-$errors    = 0;
-$pageCount = 0;
+$synced     = 0;
+$skipped    = 0;
+$errors     = 0;
+$pageCount  = 0;
 $brandCache = []; // product ID → ?string; shared across all pages
+
+// Collect every Shopify product ID seen during an --all-products run so we can
+// soft-delete local rows that Shopify no longer returns (i.e. deleted products).
+// Only populated when $allProducts is true; left empty for the 25 h default run.
+$syncedShopifyIds = [];
 
 // Build the initial URL.
 // Default: updated in the prior 25 hours so a daily cron catches anything
@@ -348,6 +354,10 @@ while ($nextUrl !== null) {
                 ':shopify_created_at'  => $createdAt,
             ]);
 
+            if ($allProducts) {
+                $syncedShopifyIds[$shopifyProductId] = true;
+            }
+
             $bundleTag = $isBundle ? ' [BUNDLE]' : '';
             $brandTag  = $customBrand !== null ? " (brand: {$customBrand})" : '';
             echo "  Synced  \"{$title}\"{$bundleTag}{$brandTag}\n";
@@ -362,10 +372,44 @@ while ($nextUrl !== null) {
     $nextUrl = parseNextUrl($result['link']);
 }
 
+// ── Reconciliation (--all-products only) ──────────────────────────────────────
+//
+// Soft-delete any local product that Shopify did not return in the full listing.
+// These are products that were deleted in Shopify since the last full sync.
+// Skipped for the default 25 h run — rely on the products/delete webhook instead.
+
+$softDeleted = 0;
+
+if ($allProducts) {
+    echo "\nReconciling local products against full Shopify catalogue…\n";
+
+    $localRows = $db
+        ->query("SELECT shopify_product_id FROM products WHERE deleted_at IS NULL")
+        ->fetchAll(PDO::FETCH_COLUMN);
+
+    $toDelete = array_diff($localRows, array_keys($syncedShopifyIds));
+
+    if (!empty($toDelete)) {
+        $deleteStmt = $db->prepare(
+            "UPDATE products SET deleted_at = datetime('now'), synced_at = datetime('now') WHERE shopify_product_id = ?"
+        );
+        foreach ($toDelete as $orphanId) {
+            $deleteStmt->execute([$orphanId]);
+            echo "  Soft-deleted product #{$orphanId} (not returned by Shopify)\n";
+            $softDeleted++;
+        }
+    } else {
+        echo "  No orphaned products found.\n";
+    }
+}
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 
 echo "\nSync complete.\n";
-echo "  Synced : {$synced}\n";
-echo "  Errors : {$errors}\n";
+echo "  Synced       : {$synced}\n";
+if ($allProducts) {
+    echo "  Soft-deleted : {$softDeleted}\n";
+}
+echo "  Errors       : {$errors}\n";
 
 exit($errors > 0 ? 2 : 0);
