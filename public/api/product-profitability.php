@@ -60,7 +60,8 @@ $db = getDb($config);
 $stmt = $db->prepare(
     "SELECT shopify_product_id, title, vendor
      FROM   products
-     WHERE  shopify_product_id = :id"
+     WHERE  shopify_product_id = :id
+       AND  deleted_at IS NULL"
 );
 $stmt->execute([':id' => $productId]);
 $localProduct = $stmt->fetch();

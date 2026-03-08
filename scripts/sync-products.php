@@ -3,15 +3,27 @@
 declare(strict_types=1);
 
 /**
- * One-time sync of all Shopify products (active, draft, and archived) into the local database.
+ * Sync Shopify products (active, draft, and archived) into the local database.
  *
- * Fetches every product via the Shopify Admin REST API, resolves the
- * custom.brand metafield for each product, and upserts the results into the
- * local products table.  Run this once after initial setup (or any time you
- * need to reconcile the local cache with Shopify).
+ * Fetches products via the Shopify Admin REST API using updated_at_min to
+ * limit the query to recently changed products, resolves the custom.brand
+ * metafield for each product, and upserts the results into the local products
+ * table.
  *
  * Usage:
- *   php scripts/sync-products.php
+ *   php scripts/sync-products.php [--all-products]
+ *
+ * Options:
+ *   --all-products   Fetch every product regardless of when it was last
+ *                    updated (full catalogue sync).
+ *                    Default behaviour fetches only products updated in the
+ *                    prior 25 hours, suitable for a daily cron job that
+ *                    catches anything missed by webhooks without re-scanning
+ *                    the entire catalogue.
+ *
+ * Note on deletions: the REST API never returns deleted products — they simply
+ * disappear from the listing.  Handle product deletions via the
+ * products/delete webhook instead.
  *
  * Requirements:
  *   - env.ini (copied from env.ini.example) with SHOPIFY_* values filled in.
@@ -29,6 +41,10 @@ declare(strict_types=1);
 $projectRoot = dirname(__DIR__);
 $config      = require $projectRoot . '/public/config.php';
 require $projectRoot . '/public/db.php';
+
+// ── Parse arguments ───────────────────────────────────────────────────────────
+
+$allProducts = in_array('--all-products', $argv ?? [], true);
 
 // ── Validate configuration ────────────────────────────────────────────────────
 
@@ -229,25 +245,49 @@ $productStmt = $db->prepare(<<<'SQL'
         is_bundle          = excluded.is_bundle,
         raw_data           = excluded.raw_data,
         shopify_created_at = excluded.shopify_created_at,
+        deleted_at         = NULL,
         synced_at          = datetime('now')
 SQL);
 
 // ── Main sync loop ────────────────────────────────────────────────────────────
 
-$synced    = 0;
-$skipped   = 0;
-$errors    = 0;
-$pageCount = 0;
+$synced     = 0;
+$skipped    = 0;
+$errors     = 0;
+$pageCount  = 0;
 $brandCache = []; // product ID → ?string; shared across all pages
 
-// Fetch all products including draft, active, and archived.
+// Collect every Shopify product ID seen during an --all-products run so we can
+// soft-delete local rows that Shopify no longer returns (i.e. deleted products).
+// Only populated when $allProducts is true; left empty for the 25 h default run.
+$syncedShopifyIds = [];
+
+// Build the initial URL.
+// Default: updated in the prior 25 hours so a daily cron catches anything
+// missed by webhooks without re-scanning the entire catalogue.
+// --all-products: no date filter, fetches the full catalogue.
+$queryParams = [
+    'status' => 'active,draft,archived',
+    'limit'  => '250',
+];
+
+if (!$allProducts) {
+    // 25 hours ago in ISO 8601 UTC — comfortable overlap window for daily cron.
+    $queryParams['updated_at_min'] = date('c', time() - (25 * 3600));
+}
+
 $nextUrl = sprintf(
-    'https://%s/admin/api/%s/products.json?status=active,draft,archived&limit=250',
+    'https://%s/admin/api/%s/products.json?%s',
     $shopDomain,
-    rawurlencode($apiVersion)
+    rawurlencode($apiVersion),
+    http_build_query($queryParams)
 );
 
-echo "Starting product sync (active, draft, and archived) from {$shopDomain}…\n";
+$modeLabel = $allProducts ? 'full catalogue' : 'prior 25 hours';
+echo "Starting product sync ({$modeLabel}) from {$shopDomain}…\n";
+if (!$allProducts) {
+    echo "  Updated after: {$queryParams['updated_at_min']}\n";
+}
 
 while ($nextUrl !== null) {
     $pageCount++;
@@ -314,6 +354,10 @@ while ($nextUrl !== null) {
                 ':shopify_created_at'  => $createdAt,
             ]);
 
+            if ($allProducts) {
+                $syncedShopifyIds[$shopifyProductId] = true;
+            }
+
             $bundleTag = $isBundle ? ' [BUNDLE]' : '';
             $brandTag  = $customBrand !== null ? " (brand: {$customBrand})" : '';
             echo "  Synced  \"{$title}\"{$bundleTag}{$brandTag}\n";
@@ -328,10 +372,44 @@ while ($nextUrl !== null) {
     $nextUrl = parseNextUrl($result['link']);
 }
 
+// ── Reconciliation (--all-products only) ──────────────────────────────────────
+//
+// Soft-delete any local product that Shopify did not return in the full listing.
+// These are products that were deleted in Shopify since the last full sync.
+// Skipped for the default 25 h run — rely on the products/delete webhook instead.
+
+$softDeleted = 0;
+
+if ($allProducts) {
+    echo "\nReconciling local products against full Shopify catalogue…\n";
+
+    $localRows = $db
+        ->query("SELECT shopify_product_id FROM products WHERE deleted_at IS NULL")
+        ->fetchAll(PDO::FETCH_COLUMN);
+
+    $toDelete = array_diff($localRows, array_keys($syncedShopifyIds));
+
+    if (!empty($toDelete)) {
+        $deleteStmt = $db->prepare(
+            "UPDATE products SET deleted_at = datetime('now'), synced_at = datetime('now') WHERE shopify_product_id = ?"
+        );
+        foreach ($toDelete as $orphanId) {
+            $deleteStmt->execute([$orphanId]);
+            echo "  Soft-deleted product #{$orphanId} (not returned by Shopify)\n";
+            $softDeleted++;
+        }
+    } else {
+        echo "  No orphaned products found.\n";
+    }
+}
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 
 echo "\nSync complete.\n";
-echo "  Synced : {$synced}\n";
-echo "  Errors : {$errors}\n";
+echo "  Synced       : {$synced}\n";
+if ($allProducts) {
+    echo "  Soft-deleted : {$softDeleted}\n";
+}
+echo "  Errors       : {$errors}\n";
 
 exit($errors > 0 ? 2 : 0);

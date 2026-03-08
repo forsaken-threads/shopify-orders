@@ -58,6 +58,7 @@ $stmt = $db->prepare(
     "SELECT shopify_product_id, title, vendor
      FROM   products
      WHERE  status = 'active'
+       AND  deleted_at IS NULL
      ORDER BY title"
 );
 $stmt->execute();

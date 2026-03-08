@@ -1,0 +1,15 @@
+# shopify-orders sync jobs
+# Install: sudo scripts/publish-artifacts.sh
+# Requires: /home/redrover/environments/php84/src/utility/do
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# Daily product sync (time-based, last 25 h) — 1:00 AM
+0 1 * * *   redrover   /home/redrover/environments/php84/src/utility/do php scripts/sync-products.php >> /home/redrover/environments/php84/src/utility/logs/sync-products.log 2>&1
+
+# Daily paid orders sync — 2:00 AM
+0 2 * * *   redrover   /home/redrover/environments/php84/src/utility/do php scripts/sync-paid-orders.php >> /home/redrover/environments/php84/src/utility/logs/sync-paid-orders.log 2>&1
+
+# Monthly full product sync with reconciliation — 1st of the month, 4:00 AM
+0 4 1 * *   redrover   /home/redrover/environments/php84/src/utility/do php scripts/sync-products.php --all-products >> /home/redrover/environments/php84/src/utility/logs/sync-products-full.log 2>&1
