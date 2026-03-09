@@ -286,6 +286,17 @@ require __DIR__ . '/../app/partials/header.php';
     </div>
 </div>
 
+<!-- ── One-off Print Modal ───────────────────────────────────────────── -->
+<div id="oneoff-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-label="Print single label">
+    <div class="modal-box oneoff-modal-box">
+        <div class="modal-header">
+            <span class="modal-title" id="oneoff-modal-title">Print Label</span>
+            <button id="oneoff-modal-close" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="oneoff-modal-body" class="oneoff-modal-body"></div>
+    </div>
+</div>
+
 <style>
 /* ── Viewport-locked layout (no page scroll) ───────────────────────────────── */
 html, body { height: 100vh; overflow: hidden; }
@@ -459,9 +470,106 @@ body { min-height: 0; }
 }
 
 .btn-oneoff-print:hover { background: #1a1a2e; color: #fff; }
-.btn-oneoff-print:disabled { cursor: default; }
-.btn-oneoff-print.oneoff-ok { background: #dcfce7; color: #166534; border-color: #86efac; }
-.btn-oneoff-print.oneoff-fail { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+/* ── One-off print modal ──────────────────────────────────────────────── */
+.oneoff-modal-box { width: min(520px, 100%); }
+
+.oneoff-modal-body {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+.oneoff-modal-body label {
+    display: block;
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted, #6b7280);
+    margin-bottom: .2rem;
+}
+
+.oneoff-modal-body input[type="text"] {
+    width: 100%;
+    padding: .4rem .5rem;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 4px;
+    font-size: .85rem;
+    font-family: inherit;
+    color: var(--text, #111827);
+    box-sizing: border-box;
+}
+
+.oneoff-modal-body input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent, #4f46e5);
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, .15);
+}
+
+.oneoff-field-group {
+    margin-bottom: .75rem;
+}
+
+.oneoff-field-row {
+    display: flex;
+    gap: .75rem;
+    margin-bottom: .75rem;
+}
+
+.oneoff-field-row > .oneoff-field-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.oneoff-ml-display {
+    font-size: .85rem;
+    color: var(--text, #374151);
+    padding: .4rem 0;
+}
+
+.oneoff-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .75rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.oneoff-modal-footer .print-error {
+    margin-right: auto;
+}
+
+.btn-oneoff-submit {
+    padding: .5rem 1.25rem;
+    background: #1a1a2e;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.btn-oneoff-submit:hover { background: #2d2d5e; }
+.btn-oneoff-submit:disabled { opacity: .45; cursor: default; }
+
+.btn-oneoff-submit.oneoff-ok { background: #166534; }
+.btn-oneoff-submit.oneoff-fail { background: #991b1b; }
+
+.btn-oneoff-cancel {
+    padding: .5rem 1.25rem;
+    background: transparent;
+    color: #666;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-oneoff-cancel:hover { background: #f3f4f6; color: #333; }
 
 /* ── Detail actions ─────────────────────────────────────────────────────────── */
 .order-detail-actions {
@@ -942,6 +1050,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
     });
 
     document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !oneoffModal.hidden) { closeOneoffModal(); return; }
         if (e.key === 'Escape' && !modal.hidden) closeModal();
         if (e.key === 'Escape' && !printModal.hidden) closePrintModal();
     });
@@ -1243,35 +1352,101 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         });
     }
 
-    // ── One-off print from detail view ──────────────────────────────────────
+    // ── One-off print modal ─────────────────────────────────────────────────
+    var oneoffModal     = document.getElementById('oneoff-modal');
+    var oneoffTitle     = document.getElementById('oneoff-modal-title');
+    var oneoffBody      = document.getElementById('oneoff-modal-body');
+    var oneoffCloseBtn  = document.getElementById('oneoff-modal-close');
+
     function wireOneoffPrintButtons(container) {
         container.querySelectorAll('.btn-oneoff-print').forEach(function (btn) {
-            btn.addEventListener('click', handleOneoffPrint);
+            btn.addEventListener('click', function () {
+                openOneoffModal(btn);
+            });
         });
     }
 
-    function handleOneoffPrint(e) {
-        var btn = e.currentTarget;
-        var orderId   = btn.dataset.orderId;
-        var title     = btn.dataset.title;
-        var fullTitle = btn.dataset.fullTitle;
-        var brand     = btn.dataset.brand;
-        var ml        = btn.dataset.ml;
-        var productId = btn.dataset.productId;
+    function openOneoffModal(btn) {
+        var orderId      = btn.dataset.orderId;
+        var title        = btn.dataset.title;
+        var fullTitle    = btn.dataset.fullTitle;
+        var brand        = btn.dataset.brand;
+        var ml           = btn.dataset.ml;
+        var productId    = btn.dataset.productId;
 
-        btn.disabled = true;
-        btn.textContent = 'Printing…';
-        btn.classList.remove('oneoff-ok', 'oneoff-fail');
+        oneoffTitle.textContent = 'Print Label — ' + ml + 'ml';
+
+        oneoffBody.innerHTML =
+            '<form id="oneoff-form">' +
+            '<input type="hidden" name="order_id" value="' + esc(orderId) + '">' +
+            '<input type="hidden" name="full_title" value="' + esc(fullTitle) + '">' +
+            '<input type="hidden" name="original_brand" value="' + esc(brand) + '">' +
+            '<input type="hidden" name="ml" value="' + esc(ml) + '">' +
+            '<input type="hidden" name="product_id" value="' + esc(productId) + '">' +
+            '<div class="oneoff-field-group">' +
+                '<label for="oneoff-title">Product Title</label>' +
+                '<input type="text" id="oneoff-title" name="title" value="' + esc(title) + '">' +
+            '</div>' +
+            '<div class="oneoff-field-row">' +
+                '<div class="oneoff-field-group">' +
+                    '<label for="oneoff-brand">Brand</label>' +
+                    '<input type="text" id="oneoff-brand" name="brand" value="' + esc(brand) + '">' +
+                '</div>' +
+                '<div class="oneoff-field-group">' +
+                    '<label>ML Size</label>' +
+                    '<div class="oneoff-ml-display">' + esc(ml) + 'ml</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="oneoff-modal-footer">' +
+                '<span class="print-error" id="oneoff-error"></span>' +
+                '<button type="button" class="btn-oneoff-cancel" id="oneoff-cancel-btn">Cancel</button>' +
+                '<button type="submit" class="btn-oneoff-submit" id="oneoff-submit-btn">Print</button>' +
+            '</div>' +
+            '</form>';
+
+        oneoffModal.hidden = false;
+
+        var cancelBtn = document.getElementById('oneoff-cancel-btn');
+        if (cancelBtn) cancelBtn.addEventListener('click', closeOneoffModal);
+
+        var form = document.getElementById('oneoff-form');
+        if (form) form.addEventListener('submit', handleOneoffSubmit);
+
+        document.getElementById('oneoff-title').focus();
+    }
+
+    function closeOneoffModal() {
+        oneoffModal.hidden = true;
+    }
+
+    if (oneoffCloseBtn) {
+        oneoffCloseBtn.addEventListener('click', closeOneoffModal);
+    }
+
+    oneoffModal.addEventListener('click', function (e) {
+        if (e.target === oneoffModal) closeOneoffModal();
+    });
+
+    function handleOneoffSubmit(e) {
+        e.preventDefault();
+        var form      = e.target;
+        var submitBtn = document.getElementById('oneoff-submit-btn');
+        var errorEl   = document.getElementById('oneoff-error');
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Printing…';
+        submitBtn.classList.remove('oneoff-ok', 'oneoff-fail');
+        errorEl.textContent = '';
 
         var formData = new FormData();
-        formData.append('order_id', orderId);
+        formData.append('order_id', form.querySelector('[name="order_id"]').value);
         formData.append('action', 'oneoff');
-        formData.append('items[0][title]', title);
-        formData.append('items[0][full_title]', fullTitle);
-        formData.append('items[0][custom_brand]', brand);
-        formData.append('items[0][original_brand]', brand);
-        formData.append('items[0][ml]', ml);
-        formData.append('items[0][shopify_product_id]', productId);
+        formData.append('items[0][title]', form.querySelector('[name="title"]').value);
+        formData.append('items[0][full_title]', form.querySelector('[name="full_title"]').value);
+        formData.append('items[0][custom_brand]', form.querySelector('[name="brand"]').value);
+        formData.append('items[0][original_brand]', form.querySelector('[name="original_brand"]').value);
+        formData.append('items[0][ml]', form.querySelector('[name="ml"]').value);
+        formData.append('items[0][shopify_product_id]', form.querySelector('[name="product_id"]').value);
         formData.append('items[0][quantity]', '1');
 
         fetch('api/print-order.php', {
@@ -1282,26 +1457,27 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         .then(function (res) { return res.json(); })
         .then(function (data) {
             if (data.ok && data.results && data.results[0] && data.results[0].status === 'ok') {
-                btn.textContent = 'Printed';
-                btn.classList.add('oneoff-ok');
+                submitBtn.textContent = 'Printed';
+                submitBtn.classList.add('oneoff-ok');
             } else {
-                btn.textContent = 'Failed';
-                btn.classList.add('oneoff-fail');
+                submitBtn.textContent = 'Failed';
+                submitBtn.classList.add('oneoff-fail');
+                errorEl.textContent = (data.results && data.results[0] && data.results[0].error) || data.error || 'Print failed';
             }
-            // Re-enable after a short delay so they can retry
             setTimeout(function () {
-                btn.disabled = false;
-                btn.textContent = 'Print';
-                btn.classList.remove('oneoff-ok', 'oneoff-fail');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Print';
+                submitBtn.classList.remove('oneoff-ok', 'oneoff-fail');
             }, 3000);
         })
         .catch(function () {
-            btn.textContent = 'Error';
-            btn.classList.add('oneoff-fail');
+            submitBtn.textContent = 'Error';
+            submitBtn.classList.add('oneoff-fail');
+            errorEl.textContent = 'Network error — please try again.';
             setTimeout(function () {
-                btn.disabled = false;
-                btn.textContent = 'Print';
-                btn.classList.remove('oneoff-ok', 'oneoff-fail');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Print';
+                submitBtn.classList.remove('oneoff-ok', 'oneoff-fail');
             }, 3000);
         });
     }
