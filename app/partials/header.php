@@ -71,6 +71,169 @@ function h(mixed $v): string
         .nav-link:hover,
         .nav-link.active { color: #fff; }
 
+        /* ── Navbar search trigger ── */
+        .navbar-search {
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .navbar-search-input {
+            background: rgba(255,255,255,.1);
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 6px;
+            padding: .4rem .75rem .4rem 2rem;
+            color: rgba(255,255,255,.7);
+            font-size: .82rem;
+            font-family: inherit;
+            width: 180px;
+            cursor: pointer;
+            transition: background .15s, border-color .15s;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: .6rem center;
+        }
+
+        .navbar-search-input::placeholder { color: rgba(255,255,255,.45); }
+        .navbar-search-input:hover { background-color: rgba(255,255,255,.15); border-color: rgba(255,255,255,.25); }
+        .navbar-search-input:focus { outline: none; }
+
+        /* ── Search modal ── */
+        .search-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.55);
+            padding: 10vh 1rem 1rem;
+        }
+
+        .search-overlay[hidden] { display: none; }
+
+        .search-box {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.3);
+            width: min(600px, 100%);
+            display: flex;
+            flex-direction: column;
+            max-height: 70vh;
+            overflow: hidden;
+        }
+
+        .search-input-wrap {
+            display: flex;
+            align-items: center;
+            padding: .75rem 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            gap: .5rem;
+        }
+
+        .search-input-wrap svg {
+            flex-shrink: 0;
+            width: 1.1rem;
+            height: 1.1rem;
+            stroke: #9ca3af;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .search-modal-input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: .95rem;
+            font-family: inherit;
+            color: #111827;
+            background: transparent;
+        }
+
+        .search-modal-input::placeholder { color: #9ca3af; }
+
+        .search-results {
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .search-empty,
+        .search-hint {
+            padding: 2rem 1rem;
+            text-align: center;
+            color: #9ca3af;
+            font-size: .85rem;
+        }
+
+        .search-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: .5rem;
+            padding: 1.5rem 1rem;
+            color: #9ca3af;
+            font-size: .85rem;
+        }
+
+        .search-result-item {
+            display: flex;
+            align-items: center;
+            padding: .6rem 1rem;
+            text-decoration: none;
+            color: #111827;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background .1s;
+            gap: .75rem;
+        }
+
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item:hover,
+        .search-result-item.active { background: #f0f2f5; }
+
+        .search-result-order {
+            font-weight: 700;
+            font-size: .88rem;
+            min-width: 4.5rem;
+        }
+
+        .search-result-customer {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .search-result-name {
+            font-size: .85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .search-result-email {
+            font-size: .75rem;
+            color: #888;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .search-result-meta {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            flex-shrink: 0;
+        }
+
+        .search-result-price {
+            font-size: .82rem;
+            font-variant-numeric: tabular-nums;
+            color: #555;
+        }
+
+        @media (max-width: 700px) {
+            .navbar-search-input { width: 120px; }
+        }
+
         /* ── Main content area ── */
         .main {
             flex: 1;
@@ -442,5 +605,163 @@ function toggleAccordion(cardId) {
         <li><a class="nav-link<?= $activePage === 'reports' ? ' active' : '' ?>" href="reports.php">Reports</a></li>
         <li><a class="nav-link<?= $activePage === 'charts'  ? ' active' : '' ?>" href="charts.php">Charts</a></li>
     </ul>
+    <div class="navbar-search">
+        <input type="text" class="navbar-search-input" id="navbar-search-trigger" placeholder="Search orders…" readonly>
+    </div>
     <?php endif; ?>
 </nav>
+
+<?php if (!$hideNav): ?>
+<!-- ── Search Modal ────────────────────────────────────────────────────── -->
+<div id="search-modal" class="search-overlay" hidden>
+    <div class="search-box">
+        <div class="search-input-wrap">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="search-modal-input" id="search-modal-input" placeholder="Search by order #, customer name, or email…" autocomplete="off">
+        </div>
+        <div class="search-results" id="search-results">
+            <div class="search-hint">Start typing to search orders…</div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var trigger     = document.getElementById('navbar-search-trigger');
+    var overlay     = document.getElementById('search-modal');
+    var input       = document.getElementById('search-modal-input');
+    var resultsEl   = document.getElementById('search-results');
+    var debounceId  = null;
+    var activeIndex = -1;
+    var resultItems = [];
+
+    if (!trigger || !overlay) return;
+
+    function openSearch() {
+        overlay.hidden = false;
+        input.value = '';
+        resultsEl.innerHTML = '<div class="search-hint">Start typing to search orders…</div>';
+        activeIndex = -1;
+        resultItems = [];
+        setTimeout(function () { input.focus(); }, 50);
+    }
+
+    function closeSearch() {
+        overlay.hidden = true;
+        input.value = '';
+        activeIndex = -1;
+        resultItems = [];
+    }
+
+    trigger.addEventListener('click', openSearch);
+    trigger.addEventListener('focus', function (e) { e.preventDefault(); openSearch(); });
+
+    overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeSearch();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        // Ctrl/Cmd+K to open search
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            if (overlay.hidden) openSearch(); else closeSearch();
+            return;
+        }
+        if (e.key === 'Escape' && !overlay.hidden) {
+            closeSearch();
+            return;
+        }
+        if (overlay.hidden) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (resultItems.length > 0) {
+                activeIndex = (activeIndex + 1) % resultItems.length;
+                highlightResult();
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (resultItems.length > 0) {
+                activeIndex = activeIndex <= 0 ? resultItems.length - 1 : activeIndex - 1;
+                highlightResult();
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeIndex >= 0 && resultItems[activeIndex]) {
+                window.location.href = resultItems[activeIndex].href;
+            }
+        }
+    });
+
+    function highlightResult() {
+        var links = resultsEl.querySelectorAll('.search-result-item');
+        links.forEach(function (el, i) {
+            el.classList.toggle('active', i === activeIndex);
+            if (i === activeIndex) el.scrollIntoView({ block: 'nearest' });
+        });
+    }
+
+    function statusBadgeHtml(status) {
+        var cls = {
+            pending:   'status-pending',
+            printed:   'status-printed',
+            fulfilled: 'status-fulfilled',
+            archived:  'status-archived',
+        }[status] || 'status-pending';
+        var label = status.charAt(0).toUpperCase() + status.slice(1);
+        return '<span class="status-badge ' + cls + '">' + escHtml(label) + '</span>';
+    }
+
+    input.addEventListener('input', function () {
+        var q = input.value.trim();
+        clearTimeout(debounceId);
+        activeIndex = -1;
+        resultItems = [];
+
+        if (q.length < 2) {
+            resultsEl.innerHTML = '<div class="search-hint">Start typing to search orders…</div>';
+            return;
+        }
+
+        resultsEl.innerHTML = '<div class="search-loading"><div class="spinner"></div> Searching…</div>';
+
+        debounceId = setTimeout(function () {
+            fetch('api/order-search.php?q=' + encodeURIComponent(q))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (!data || data.length === 0) {
+                        resultsEl.innerHTML = '<div class="search-empty">No orders found.</div>';
+                        resultItems = [];
+                        return;
+                    }
+
+                    var html = '';
+                    resultItems = [];
+                    data.forEach(function (order) {
+                        var href = 'order.php?id=' + order.id;
+                        resultItems.push({ href: href });
+                        html += '<a class="search-result-item" href="' + escHtml(href) + '">' +
+                            '<span class="search-result-order">' + escHtml(order.order_number) + '</span>' +
+                            '<span class="search-result-customer">' +
+                                '<div class="search-result-name">' + escHtml(order.customer_name) + '</div>' +
+                                '<div class="search-result-email">' + escHtml(order.customer_email) + '</div>' +
+                            '</span>' +
+                            '<span class="search-result-meta">' +
+                                '<span class="search-result-price">' + escHtml(order.currency) + ' ' + Number(order.total_price).toFixed(2) + '</span>' +
+                                statusBadgeHtml(order.status) +
+                            '</span>' +
+                            '</a>';
+                    });
+                    resultsEl.innerHTML = html;
+                })
+                .catch(function () {
+                    resultsEl.innerHTML = '<div class="search-empty">Search failed. Please try again.</div>';
+                    resultItems = [];
+                });
+        }, 250);
+    });
+}());
+</script>
+<?php endif; ?>
