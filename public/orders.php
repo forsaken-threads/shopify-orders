@@ -455,7 +455,7 @@ body { min-height: 0; }
 }
 
 .line-items-table tbody tr:last-child td { border-bottom: none; }
-.line-items-table tbody tr:hover td { background: #fafafa; }
+.line-items-table tbody tr:hover td { background: #dfdfdf; }
 
 /* ── Detail actions ─────────────────────────────────────────────────────────── */
 .order-detail-actions {
