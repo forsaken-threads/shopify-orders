@@ -86,6 +86,8 @@ $brandChanges = [];
 $labelEntries = '';
 $validMlSizes = ['1', '5', '10'];
 $timestamp    = date('Y-m-d H:i:s');
+$hasErrors    = false;
+$failedItems  = [];
 
 foreach ($items as $item) {
     $title         = trim((string) ($item['title'] ?? ''));
@@ -103,10 +105,10 @@ foreach ($items as $item) {
 
     $qty = max(1, (int) ($item['quantity'] ?? 1));
 
-    // Build the SSH print command — the remote command is passed via escapeshellarg
-    // to avoid nested quoting issues with single quotes inside the ssh '...' wrapper.
-    $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label-' . $ml . 'ml.py '
-               . escapeshellarg($title) . ' ' . escapeshellarg($brand);
+    // Build the SSH print command
+    $mlArg = $ml . 'ml';
+    $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label-' . $mlArg . '.py '
+               . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
 
     // Execute for each copy (quantity)
@@ -116,16 +118,19 @@ foreach ($items as $item) {
         $cmdResult = 0;
         exec($cmd . ' 2>&1', $cmdOutput, $cmdResult);
         $outputStr = implode("\n", $cmdOutput);
-        $logLine   = "[{$timestamp}] exit:{$cmdResult} | {$ml}ml | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
         if ($cmdResult !== 0) {
+            $logLine = "[{$timestamp}] exit:{$cmdResult} | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\ncmd: {$cmd}\n{$outputStr}\n---\n";
             file_put_contents($scriptsDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
+            $hasErrors = true;
+            $failedItems[] = $title;
         } else {
+            $logLine = "[{$timestamp}] exit:0 | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
             file_put_contents($scriptsDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
         }
     }
 
     // Log the label entry
-    $labelEntries .= "[{$timestamp}] {$ml}ml | {$title} | {$brand} | order:{$order['shopify_order_id']} | exit:{$cmdResult}\n";
+    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']} | exit:{$cmdResult}\n";
 
     if ($originalBrand !== $brand && $productId !== '') {
         $brandChanges[] = [
@@ -138,6 +143,17 @@ foreach ($items as $item) {
 }
 
 file_put_contents($labelLog, $labelEntries, FILE_APPEND | LOCK_EX);
+
+// ── If any labels failed, abort without updating order status ────────────────
+
+if ($hasErrors) {
+    http_response_code(500);
+    echo json_encode([
+        'ok'    => false,
+        'error' => 'Print failed for: ' . implode(', ', $failedItems) . '. Check print-errors.log for details.',
+    ]);
+    exit;
+}
 
 // ── Update order status to printed ────────────────────────────────────────────
 
