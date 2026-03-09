@@ -40,10 +40,13 @@ if (!$order) {
 }
 
 $liStmt = $db->prepare(
-    "SELECT title, variant_title, variant_ml, sku, vendor, quantity, price, custom_brand, shopify_product_id
-     FROM   order_line_items
-     WHERE  order_id = ?
-     ORDER  BY id ASC"
+    "SELECT li.title, li.variant_title, li.variant_ml, li.sku, li.vendor,
+            li.quantity, li.price, li.custom_brand, li.shopify_product_id,
+            p.preferred_title, p.preferred_brand
+     FROM   order_line_items li
+     LEFT JOIN products p ON p.shopify_product_id = li.shopify_product_id
+     WHERE  li.order_id = ?
+     ORDER  BY li.id ASC"
 );
 $liStmt->execute([$id]);
 $lineItems = $liStmt->fetchAll();
@@ -262,7 +265,10 @@ require __DIR__ . '/../app/partials/header.php';
                 $qty       = (int) $item['quantity'];
                 $ml        = $item['variant_ml'] !== null ? (int) $item['variant_ml'] : null;
                 $brand     = $item['custom_brand'] ?? '';
-                $strippedTitle = stripBrandPrefixPhp($item['title'], $brand);
+                $preferredTitle = $item['preferred_title'] ?? null;
+                $preferredBrand = $item['preferred_brand'] ?? null;
+                $strippedTitle = $preferredTitle ?? stripBrandPrefixPhp($item['title'], $brand);
+                $displayBrand  = $preferredBrand ?? $brand;
             ?>
                 <tr>
                     <td><?= h($item['title']) ?></td>
@@ -281,9 +287,11 @@ require __DIR__ . '/../app/partials/header.php';
                                 data-order-id="<?= $id ?>"
                                 data-title="<?= h($strippedTitle) ?>"
                                 data-full-title="<?= h($item['title']) ?>"
-                                data-brand="<?= h($brand) ?>"
+                                data-brand="<?= h($displayBrand) ?>"
                                 data-ml="<?= h((string) $ml) ?>"
                                 data-product-id="<?= h($item['shopify_product_id'] ?? '') ?>"
+                                data-preferred-title="<?= h($preferredTitle ?? '') ?>"
+                                data-preferred-brand="<?= h($preferredBrand ?? '') ?>"
                                 title="Print one label">Print</button>
                         <?php endif; ?>
                     </td>

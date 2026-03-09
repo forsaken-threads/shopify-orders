@@ -75,10 +75,13 @@ if (!$order) {
 }
 
 $liStmt = $db->prepare(
-    "SELECT title, variant_title, variant_ml, sku, vendor, quantity, price, custom_brand, shopify_product_id
-     FROM   order_line_items
-     WHERE  order_id = ?
-     ORDER  BY id ASC"
+    "SELECT li.title, li.variant_title, li.variant_ml, li.sku, li.vendor,
+            li.quantity, li.price, li.custom_brand, li.shopify_product_id,
+            p.preferred_title, p.preferred_brand
+     FROM   order_line_items li
+     LEFT JOIN products p ON p.shopify_product_id = li.shopify_product_id
+     WHERE  li.order_id = ?
+     ORDER  BY li.id ASC"
 );
 $liStmt->execute([$id]);
 $lineItems = $liStmt->fetchAll();
@@ -105,6 +108,8 @@ echo json_encode([
         'vendor'       => $li['vendor'] ?? '',
         'custom_brand' => $li['custom_brand'] ?? '',
         'shopify_product_id' => $li['shopify_product_id'] ?? '',
+        'preferred_title' => $li['preferred_title'] ?? null,
+        'preferred_brand' => $li['preferred_brand'] ?? null,
         'quantity'     => (int) $li['quantity'],
         'price'        => (float) $li['price'],
     ], $lineItems),

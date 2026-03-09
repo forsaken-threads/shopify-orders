@@ -105,19 +105,23 @@ $logDir     = dirname(__DIR__, 2) . '/logs';
 $scriptsDir = dirname(__DIR__, 2) . '/scripts';
 $labelLog   = $logDir . '/print-labels.log';
 
-$brandChanges  = [];
 $labelEntries  = '';
 $validMlSizes  = ['1', '5', '10'];
 $timestamp     = date('Y-m-d H:i:s');
 $results       = [];   // per-item status to return to the frontend
 
+$prefUpdateStmt = $db->prepare(
+    "UPDATE products SET preferred_title = ?, preferred_brand = ? WHERE shopify_product_id = ?"
+);
+
 foreach ($items as $idx => $item) {
-    $title         = trim((string) ($item['title'] ?? ''));
-    $brand         = trim((string) ($item['custom_brand'] ?? ''));
-    $originalBrand = (string) ($item['original_brand'] ?? '');
-    $fullTitle     = trim((string) ($item['full_title'] ?? ''));
-    $productId     = trim((string) ($item['shopify_product_id'] ?? ''));
-    $ml            = trim((string) ($item['ml'] ?? ''));
+    $title          = trim((string) ($item['title'] ?? ''));
+    $brand          = trim((string) ($item['custom_brand'] ?? ''));
+    $fullTitle      = trim((string) ($item['full_title'] ?? ''));
+    $productId      = trim((string) ($item['shopify_product_id'] ?? ''));
+    $ml             = trim((string) ($item['ml'] ?? ''));
+    $preferredTitle = (string) ($item['preferred_title'] ?? '');
+    $preferredBrand = (string) ($item['preferred_brand'] ?? '');
 
     if (!in_array($ml, $validMlSizes, true)) {
         http_response_code(400);
@@ -161,38 +165,14 @@ foreach ($items as $idx => $item) {
     // Log the label entry
     $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']} | " . ($itemFailed ? 'FAIL' : 'ok') . "\n";
 
-    if ($originalBrand !== $brand && $productId !== '') {
-        $brandChanges[] = [
-            'shopify_product_id' => $productId,
-            'full_title'         => $fullTitle,
-            'old_brand'          => $originalBrand,
-            'new_brand'          => $brand,
-        ];
+    // Update preferred title/brand in products table if the submitted values
+    // differ from the current preferences.
+    if ($productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
+        $prefUpdateStmt->execute([$title, $brand, $productId]);
     }
 }
 
 file_put_contents($labelLog, $labelEntries, FILE_APPEND | LOCK_EX);
-
-// ── Log brand changes (stub for Shopify Admin API metafield update) ───────────
-
-if (!empty($brandChanges)) {
-    $brandLog = $logDir . '/brand-updates.log';
-
-    foreach ($brandChanges as $change) {
-        $entry = [
-            'timestamp'          => $timestamp,
-            'shopify_product_id' => $change['shopify_product_id'],
-            'full_title'         => $change['full_title'],
-            'old_brand'          => $change['old_brand'],
-            'new_brand'          => $change['new_brand'],
-        ];
-        file_put_contents(
-            $brandLog,
-            json_encode($entry, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n",
-            FILE_APPEND | LOCK_EX,
-        );
-    }
-}
 
 // Return per-item results — never update order status here
 echo json_encode(['ok' => true, 'results' => $results]);

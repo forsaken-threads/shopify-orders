@@ -418,8 +418,12 @@ var PrintModals = (function () {
 
         var totalPrintQty = 0;
         var rows = li.map(function (item, i) {
-            var strippedTitle = stripBrandPrefix(item.title, item.custom_brand);
-            var brand = item.custom_brand || '';
+            var brand = item.preferred_brand != null ? item.preferred_brand : (item.custom_brand || '');
+            var displayTitle = item.preferred_title != null
+                ? item.preferred_title
+                : stripBrandPrefix(item.title, item.custom_brand);
+            var preferredTitle = item.preferred_title != null ? item.preferred_title : '';
+            var preferredBrand = item.preferred_brand != null ? item.preferred_brand : '';
             var ml = item.variant_ml != null ? String(item.variant_ml) : '';
             var qty = Number(item.quantity);
             totalPrintQty += qty;
@@ -429,14 +433,16 @@ var PrintModals = (function () {
                 '</td>' +
                 '<td class="print-status-col" hidden></td>' +
                 '<td>' +
-                    '<input type="text" name="items[' + i + '][title]" value="' + esc(strippedTitle) + '">' +
+                    '<input type="text" name="items[' + i + '][title]" value="' + esc(displayTitle) + '">' +
                     '<input type="hidden" name="items[' + i + '][full_title]" value="' + esc(item.title) + '">' +
                     '<input type="hidden" name="items[' + i + '][shopify_product_id]" value="' + esc(item.shopify_product_id || '') + '">' +
                     '<input type="hidden" name="items[' + i + '][ml]" value="' + esc(ml) + '">' +
+                    '<input type="hidden" name="items[' + i + '][preferred_title]" value="' + esc(preferredTitle) + '">' +
                 '</td>' +
                 '<td>' +
                     '<input type="text" name="items[' + i + '][custom_brand]" value="' + esc(brand) + '">' +
                     '<input type="hidden" name="items[' + i + '][original_brand]" value="' + esc(brand) + '">' +
+                    '<input type="hidden" name="items[' + i + '][preferred_brand]" value="' + esc(preferredBrand) + '">' +
                 '</td>' +
                 '<td>' + esc(ml ? ml + 'ml' : '') + '</td>' +
                 '<td class="qty">' + qty +
@@ -688,12 +694,18 @@ var PrintModals = (function () {
     // ── One-off print modal ───────────────────────────────────────────────
 
     function openOneoffModal(btn) {
-        var orderId      = btn.dataset.orderId;
-        var title        = btn.dataset.title;
-        var fullTitle    = btn.dataset.fullTitle;
-        var brand        = btn.dataset.brand;
-        var ml           = btn.dataset.ml;
-        var productId    = btn.dataset.productId;
+        var orderId        = btn.dataset.orderId;
+        var title          = btn.dataset.title;
+        var fullTitle      = btn.dataset.fullTitle;
+        var brand          = btn.dataset.brand;
+        var ml             = btn.dataset.ml;
+        var productId      = btn.dataset.productId;
+        var preferredTitle = btn.dataset.preferredTitle || '';
+        var preferredBrand = btn.dataset.preferredBrand || '';
+
+        // Use preferred values when set, otherwise fall back to defaults
+        var displayTitle = preferredTitle || title;
+        var displayBrand = preferredBrand || brand;
 
         oneoffTitle.textContent = 'Print Label — ' + ml + 'ml';
 
@@ -701,17 +713,19 @@ var PrintModals = (function () {
             '<form id="oneoff-form">' +
             '<input type="hidden" name="order_id" value="' + esc(orderId) + '">' +
             '<input type="hidden" name="full_title" value="' + esc(fullTitle) + '">' +
-            '<input type="hidden" name="original_brand" value="' + esc(brand) + '">' +
+            '<input type="hidden" name="original_brand" value="' + esc(displayBrand) + '">' +
             '<input type="hidden" name="ml" value="' + esc(ml) + '">' +
             '<input type="hidden" name="product_id" value="' + esc(productId) + '">' +
+            '<input type="hidden" name="preferred_title" value="' + esc(preferredTitle) + '">' +
+            '<input type="hidden" name="preferred_brand" value="' + esc(preferredBrand) + '">' +
             '<div class="oneoff-field-group">' +
                 '<label for="oneoff-title">Product Title</label>' +
-                '<input type="text" id="oneoff-title" name="title" value="' + esc(title) + '">' +
+                '<input type="text" id="oneoff-title" name="title" value="' + esc(displayTitle) + '">' +
             '</div>' +
             '<div class="oneoff-field-row">' +
                 '<div class="oneoff-field-group">' +
                     '<label for="oneoff-brand">Brand</label>' +
-                    '<input type="text" id="oneoff-brand" name="brand" value="' + esc(brand) + '">' +
+                    '<input type="text" id="oneoff-brand" name="brand" value="' + esc(displayBrand) + '">' +
                 '</div>' +
                 '<div class="oneoff-field-group">' +
                     '<label>ML Size</label>' +
@@ -760,6 +774,8 @@ var PrintModals = (function () {
         formData.append('items[0][original_brand]', form.querySelector('[name="original_brand"]').value);
         formData.append('items[0][ml]', form.querySelector('[name="ml"]').value);
         formData.append('items[0][shopify_product_id]', form.querySelector('[name="product_id"]').value);
+        formData.append('items[0][preferred_title]', form.querySelector('[name="preferred_title"]').value);
+        formData.append('items[0][preferred_brand]', form.querySelector('[name="preferred_brand"]').value);
         formData.append('items[0][quantity]', '1');
 
         fetch('api/print-order.php', {
