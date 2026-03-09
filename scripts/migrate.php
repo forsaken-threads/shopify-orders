@@ -144,6 +144,26 @@ try {
 
 $pdo->exec('CREATE INDEX IF NOT EXISTS idx_products_normalized_title ON products(normalized_title)');
 
+// ── Add preferred_title and preferred_brand to products ──────────────────────
+//
+// User-chosen label printing overrides.  When set, the print modal pre-fills
+// the editable Title / Brand fields with these values instead of deriving them
+// from the Shopify product title.  NULL means "no preference — use defaults".
+
+try {
+    $pdo->exec('ALTER TABLE products ADD COLUMN preferred_title TEXT');
+    echo "Added preferred_title column to products table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+try {
+    $pdo->exec('ALTER TABLE products ADD COLUMN preferred_brand TEXT');
+    echo "Added preferred_brand column to products table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
 // Backfill normalized_title for any existing rows that don't have it yet.
 $toBackfill = $pdo
     ->query("SELECT id, title FROM products WHERE normalized_title IS NULL")
