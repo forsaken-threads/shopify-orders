@@ -443,6 +443,26 @@ body { min-height: 0; }
 
 .line-items-table tbody tr:last-child td { border-bottom: none; }
 
+/* ── One-off print button in detail line items ─────────────────────────── */
+.oneoff-print-cell { white-space: nowrap; text-align: center; }
+
+.btn-oneoff-print {
+    padding: .2rem .6rem;
+    background: transparent;
+    color: #1a1a2e;
+    border: 1px solid #1a1a2e;
+    border-radius: 4px;
+    font-size: .72rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+}
+
+.btn-oneoff-print:hover { background: #1a1a2e; color: #fff; }
+.btn-oneoff-print:disabled { cursor: default; }
+.btn-oneoff-print.oneoff-ok { background: #dcfce7; color: #166534; border-color: #86efac; }
+.btn-oneoff-print.oneoff-fail { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
 /* ── Detail actions ─────────────────────────────────────────────────────────── */
 .order-detail-actions {
     margin-top: 0.875rem;
@@ -766,19 +786,32 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
 
         var items = '';
         if (li && li.length > 0) {
-            var rows = li.map(function (item) {
+            var rows = li.map(function (item, i) {
                 var unitPrice = Number(item.price);
                 var qty       = Number(item.quantity);
+                var ml        = item.variant_ml != null ? String(item.variant_ml) : '';
+                var brand     = item.custom_brand || '';
+                var strippedTitle = stripBrandPrefix(item.title, brand);
                 return '<tr>' +
                     '<td>' + esc(item.title) + '</td>' +
                     '<td>' + esc(item.variant_title) + '</td>' +
-                    '<td>' + (item.variant_ml != null ? esc(String(item.variant_ml)) : '') + '</td>' +
+                    '<td>' + (ml ? esc(ml) : '') + '</td>' +
                     '<td>' + esc(item.sku) + '</td>' +
                     '<td>' + esc(item.vendor) + '</td>' +
-                    '<td>' + esc(item.custom_brand) + '</td>' +
+                    '<td>' + esc(brand) + '</td>' +
                     '<td>' + qty + '</td>' +
                     '<td>' + unitPrice.toFixed(2) + '</td>' +
                     '<td>' + (unitPrice * qty).toFixed(2) + '</td>' +
+                    '<td class="oneoff-print-cell">' +
+                        (ml ? '<button class="btn-oneoff-print"' +
+                            ' data-order-id="' + esc(String(o.id)) + '"' +
+                            ' data-title="' + esc(strippedTitle) + '"' +
+                            ' data-full-title="' + esc(item.title) + '"' +
+                            ' data-brand="' + esc(brand) + '"' +
+                            ' data-ml="' + esc(ml) + '"' +
+                            ' data-product-id="' + esc(item.shopify_product_id || '') + '"' +
+                            ' title="Print one label">Print</button>' : '') +
+                    '</td>' +
                     '</tr>';
             }).join('');
 
@@ -788,6 +821,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                 '<table class="line-items-table"><thead><tr>' +
                 '<th>Product</th><th>Variant</th><th>ML</th><th>SKU</th>' +
                 '<th>Vendor</th><th>Brand</th><th>Qty</th><th>Unit Price</th><th>Line Total</th>' +
+                '<th></th>' +
                 '</tr></thead><tbody>' + rows + '</tbody></table>' +
                 '</div>';
         }
@@ -843,6 +877,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                     // Wire up the raw-data button that was just rendered.
                     var rawBtn = contentEl.querySelector('.btn-raw-data');
                     if (rawBtn) rawBtn.addEventListener('click', handleRawDataClick);
+                    wireOneoffPrintButtons(contentEl);
                 })
                 .catch(function (err) {
                     contentEl.innerHTML =
@@ -1205,6 +1240,69 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             errorEl.textContent = 'Network error — please try again.';
             submitBtn.disabled = false;
             submitBtn.textContent = inReview ? 'Retry' : 'Print Labels';
+        });
+    }
+
+    // ── One-off print from detail view ──────────────────────────────────────
+    function wireOneoffPrintButtons(container) {
+        container.querySelectorAll('.btn-oneoff-print').forEach(function (btn) {
+            btn.addEventListener('click', handleOneoffPrint);
+        });
+    }
+
+    function handleOneoffPrint(e) {
+        var btn = e.currentTarget;
+        var orderId   = btn.dataset.orderId;
+        var title     = btn.dataset.title;
+        var fullTitle = btn.dataset.fullTitle;
+        var brand     = btn.dataset.brand;
+        var ml        = btn.dataset.ml;
+        var productId = btn.dataset.productId;
+
+        btn.disabled = true;
+        btn.textContent = 'Printing…';
+        btn.classList.remove('oneoff-ok', 'oneoff-fail');
+
+        var formData = new FormData();
+        formData.append('order_id', orderId);
+        formData.append('action', 'oneoff');
+        formData.append('items[0][title]', title);
+        formData.append('items[0][full_title]', fullTitle);
+        formData.append('items[0][custom_brand]', brand);
+        formData.append('items[0][original_brand]', brand);
+        formData.append('items[0][ml]', ml);
+        formData.append('items[0][shopify_product_id]', productId);
+        formData.append('items[0][quantity]', '1');
+
+        fetch('api/print-order.php', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': CSRF_TOKEN },
+            body: formData,
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data.ok && data.results && data.results[0] && data.results[0].status === 'ok') {
+                btn.textContent = 'Printed';
+                btn.classList.add('oneoff-ok');
+            } else {
+                btn.textContent = 'Failed';
+                btn.classList.add('oneoff-fail');
+            }
+            // Re-enable after a short delay so they can retry
+            setTimeout(function () {
+                btn.disabled = false;
+                btn.textContent = 'Print';
+                btn.classList.remove('oneoff-ok', 'oneoff-fail');
+            }, 3000);
+        })
+        .catch(function () {
+            btn.textContent = 'Error';
+            btn.classList.add('oneoff-fail');
+            setTimeout(function () {
+                btn.disabled = false;
+                btn.textContent = 'Print';
+                btn.classList.remove('oneoff-ok', 'oneoff-fail');
+            }, 3000);
         });
     }
 

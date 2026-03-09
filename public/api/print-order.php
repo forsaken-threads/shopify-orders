@@ -64,8 +64,15 @@ if ($orderId <= 0) {
 
 $db = getDb($config);
 
-// Verify the order exists and is pending.
-$orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ? AND status = 'pending'");
+$action = trim((string) ($_POST['action'] ?? 'print'));
+
+if ($action === 'oneoff') {
+    // One-off prints work on any order status and never change it.
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ?");
+} else {
+    // Regular print/confirm requires pending status.
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ? AND status = 'pending'");
+}
 $orderStmt->execute([$orderId]);
 $order = $orderStmt->fetch();
 
@@ -74,8 +81,6 @@ if (!$order) {
     echo json_encode(['ok' => false, 'error' => 'Order not found or not in pending status.']);
     exit;
 }
-
-$action = trim((string) ($_POST['action'] ?? 'print'));
 
 // ── action=confirm: finalize the order ───────────────────────────────────────
 
