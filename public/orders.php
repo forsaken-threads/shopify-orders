@@ -45,7 +45,9 @@ $offset      = ($currentPage - 1) * $perPage;
 
 // ── Fetch orders (no raw_data or line items — loaded async on expand) ──────────
 
-$stmt = $db->prepare(<<<'SQL'
+$sortDir = in_array($filterStatus, ['fulfilled', 'archived'], true) ? 'DESC' : 'ASC';
+
+$stmt = $db->prepare("
     SELECT o.id, o.shopify_order_id, o.order_number, o.customer_name, o.customer_email,
            o.total_price, o.currency, o.status, o.shopify_created_at, o.received_at,
            COALESCE(
@@ -54,9 +56,9 @@ $stmt = $db->prepare(<<<'SQL'
            ) AS total_quantity
     FROM   orders o
     WHERE  o.status = :status
-    ORDER  BY o.shopify_created_at ASC
+    ORDER  BY o.shopify_created_at {$sortDir}
     LIMIT  :limit OFFSET :offset
-SQL);
+");
 $stmt->execute([':status' => $filterStatus, ':limit' => $perPage, ':offset' => $offset]);
 $orders = $stmt->fetchAll();
 
@@ -453,6 +455,7 @@ body { min-height: 0; }
 }
 
 .line-items-table tbody tr:last-child td { border-bottom: none; }
+.line-items-table tbody tr:hover td { background: #fafafa; }
 
 /* ── Detail actions ─────────────────────────────────────────────────────────── */
 .order-detail-actions {
