@@ -81,8 +81,8 @@ function statusBadge(string $status): string
 
 // Number of visible columns (used for accordion colspan).
 // Base: expand, order, customer, total, items, status, order-date = 7
-// +2 if pending (print + archive buttons)
-$colCount = $filterStatus === 'pending' ? 9 : 7;
+// +2 if pending (print + archive buttons), +1 if archived (unarchive button)
+$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' ? 8 : 7);
 
 $pageTitle  = 'Orders - Utility App';
 $activePage = 'orders';
@@ -128,6 +128,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th class="hide-mobile">Status</th>
                     <th>Order Date</th>
                     <?php if ($filterStatus === 'pending'): ?><th></th><th></th><?php endif; ?>
+                    <?php if ($filterStatus === 'archived'): ?><th></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -173,6 +174,15 @@ require __DIR__ . '/../app/partials/header.php';
                                 data-id="<?= $oid ?>"
                                 title="Archive order <?= h($order['order_number']) ?>">
                             Archive
+                        </button>
+                    </td>
+                    <?php endif; ?>
+                    <?php if ($filterStatus === 'archived'): ?>
+                    <td>
+                        <button class="btn-unarchive"
+                                data-id="<?= $oid ?>"
+                                title="Move order <?= h($order['order_number']) ?> back to pending">
+                            Unarchive
                         </button>
                     </td>
                     <?php endif; ?>
@@ -273,6 +283,17 @@ require __DIR__ . '/../app/partials/header.php';
             Loading line items…
         </div>
         <div id="print-modal-body" class="print-modal-body"></div>
+    </div>
+</div>
+
+<!-- ── One-off Print Modal ───────────────────────────────────────────── -->
+<div id="oneoff-modal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-label="Print single label">
+    <div class="modal-box oneoff-modal-box">
+        <div class="modal-header">
+            <span class="modal-title" id="oneoff-modal-title">Print Label</span>
+            <button id="oneoff-modal-close" class="modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="oneoff-modal-body" class="oneoff-modal-body"></div>
     </div>
 </div>
 
@@ -432,6 +453,123 @@ body { min-height: 0; }
 }
 
 .line-items-table tbody tr:last-child td { border-bottom: none; }
+
+/* ── One-off print button in detail line items ─────────────────────────── */
+.oneoff-print-cell { white-space: nowrap; text-align: center; }
+
+.btn-oneoff-print {
+    padding: .2rem .6rem;
+    background: transparent;
+    color: #1a1a2e;
+    border: 1px solid #1a1a2e;
+    border-radius: 4px;
+    font-size: .72rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+}
+
+.btn-oneoff-print:hover { background: #1a1a2e; color: #fff; }
+
+/* ── One-off print modal ──────────────────────────────────────────────── */
+.oneoff-modal-box { width: min(520px, 100%); }
+
+.oneoff-modal-body {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+.oneoff-modal-body label {
+    display: block;
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted, #6b7280);
+    margin-bottom: .2rem;
+}
+
+.oneoff-modal-body input[type="text"] {
+    width: 100%;
+    padding: .4rem .5rem;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 4px;
+    font-size: .85rem;
+    font-family: inherit;
+    color: var(--text, #111827);
+    box-sizing: border-box;
+}
+
+.oneoff-modal-body input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent, #4f46e5);
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, .15);
+}
+
+.oneoff-field-group {
+    margin-bottom: .75rem;
+}
+
+.oneoff-field-row {
+    display: flex;
+    gap: .75rem;
+    margin-bottom: .75rem;
+}
+
+.oneoff-field-row > .oneoff-field-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.oneoff-ml-display {
+    font-size: .85rem;
+    color: var(--text, #374151);
+    padding: .4rem 0;
+}
+
+.oneoff-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .75rem;
+    padding-top: .75rem;
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.oneoff-modal-footer .print-error {
+    margin-right: auto;
+}
+
+.btn-oneoff-submit {
+    padding: .5rem 1.25rem;
+    background: #1a1a2e;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.btn-oneoff-submit:hover { background: #2d2d5e; }
+.btn-oneoff-submit:disabled { opacity: .45; cursor: default; }
+
+.btn-oneoff-submit.oneoff-ok { background: #166534; }
+.btn-oneoff-submit.oneoff-fail { background: #991b1b; }
+
+.btn-oneoff-cancel {
+    padding: .5rem 1.25rem;
+    background: transparent;
+    color: #666;
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    font-size: .85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-oneoff-cancel:hover { background: #f3f4f6; color: #333; }
 
 /* ── Detail actions ─────────────────────────────────────────────────────────── */
 .order-detail-actions {
@@ -644,10 +782,15 @@ body { min-height: 0; }
 
 .btn-print-cancel:hover { background: #f3f4f6; color: #333; }
 
+.print-total-qty {
+    font-size: .85rem;
+    color: var(--text, #374151);
+    margin-right: auto;
+}
+
 .print-error {
     color: #b91c1c;
     font-size: .85rem;
-    margin-right: auto;
 }
 
 /* ── Print review stage: retry checkboxes & status indicators ──────────── */
@@ -683,6 +826,24 @@ body { min-height: 0; }
 
 tr.print-row-error { background: #fef2f2; }
 tr.print-row-ok td input[type="text"] { opacity: .55; }
+
+/* ── Unarchive button ─────────────────────────────────────────────────── */
+.btn-unarchive {
+    display: inline-block;
+    padding: .4rem 1rem;
+    background: transparent;
+    color: var(--accent, #4f46e5);
+    border: 1px solid var(--accent, #4f46e5);
+    border-radius: 6px;
+    font-size: .8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-unarchive:hover { background: var(--accent, #4f46e5); color: #fff; }
+.btn-unarchive:disabled { opacity: .45; cursor: default; }
 
 /* Row printed state (mirrors archived-row) */
 tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events: none; }
@@ -733,19 +894,32 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
 
         var items = '';
         if (li && li.length > 0) {
-            var rows = li.map(function (item) {
+            var rows = li.map(function (item, i) {
                 var unitPrice = Number(item.price);
                 var qty       = Number(item.quantity);
+                var ml        = item.variant_ml != null ? String(item.variant_ml) : '';
+                var brand     = item.custom_brand || '';
+                var strippedTitle = stripBrandPrefix(item.title, brand);
                 return '<tr>' +
                     '<td>' + esc(item.title) + '</td>' +
                     '<td>' + esc(item.variant_title) + '</td>' +
-                    '<td>' + (item.variant_ml != null ? esc(String(item.variant_ml)) : '') + '</td>' +
+                    '<td>' + (ml ? esc(ml) : '') + '</td>' +
                     '<td>' + esc(item.sku) + '</td>' +
                     '<td>' + esc(item.vendor) + '</td>' +
-                    '<td>' + esc(item.custom_brand) + '</td>' +
+                    '<td>' + esc(brand) + '</td>' +
                     '<td>' + qty + '</td>' +
                     '<td>' + unitPrice.toFixed(2) + '</td>' +
                     '<td>' + (unitPrice * qty).toFixed(2) + '</td>' +
+                    '<td class="oneoff-print-cell">' +
+                        (ml ? '<button class="btn-oneoff-print"' +
+                            ' data-order-id="' + esc(String(o.id)) + '"' +
+                            ' data-title="' + esc(strippedTitle) + '"' +
+                            ' data-full-title="' + esc(item.title) + '"' +
+                            ' data-brand="' + esc(brand) + '"' +
+                            ' data-ml="' + esc(ml) + '"' +
+                            ' data-product-id="' + esc(item.shopify_product_id || '') + '"' +
+                            ' title="Print one label">Print</button>' : '') +
+                    '</td>' +
                     '</tr>';
             }).join('');
 
@@ -755,6 +929,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                 '<table class="line-items-table"><thead><tr>' +
                 '<th>Product</th><th>Variant</th><th>ML</th><th>SKU</th>' +
                 '<th>Vendor</th><th>Brand</th><th>Qty</th><th>Unit Price</th><th>Line Total</th>' +
+                '<th></th>' +
                 '</tr></thead><tbody>' + rows + '</tbody></table>' +
                 '</div>';
         }
@@ -810,6 +985,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                     // Wire up the raw-data button that was just rendered.
                     var rawBtn = contentEl.querySelector('.btn-raw-data');
                     if (rawBtn) rawBtn.addEventListener('click', handleRawDataClick);
+                    wireOneoffPrintButtons(contentEl);
                 })
                 .catch(function (err) {
                     contentEl.innerHTML =
@@ -874,6 +1050,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
     });
 
     document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !oneoffModal.hidden) { closeOneoffModal(); return; }
         if (e.key === 'Escape' && !modal.hidden) closeModal();
         if (e.key === 'Escape' && !printModal.hidden) closePrintModal();
     });
@@ -900,10 +1077,13 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             return '<p style="color:#888;font-size:.85rem;">No line items to print.</p>';
         }
 
+        var totalPrintQty = 0;
         var rows = li.map(function (item, i) {
             var strippedTitle = stripBrandPrefix(item.title, item.custom_brand);
             var brand = item.custom_brand || '';
             var ml = item.variant_ml != null ? String(item.variant_ml) : '';
+            var qty = Number(item.quantity);
+            totalPrintQty += qty;
             return '<tr data-item-index="' + i + '">' +
                 '<td class="print-retry-col" hidden>' +
                     '<input type="checkbox" class="print-retry-cb" data-index="' + i + '">' +
@@ -920,8 +1100,8 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                     '<input type="hidden" name="items[' + i + '][original_brand]" value="' + esc(brand) + '">' +
                 '</td>' +
                 '<td>' + esc(ml ? ml + 'ml' : '') + '</td>' +
-                '<td class="qty">' + Number(item.quantity) +
-                    '<input type="hidden" name="items[' + i + '][quantity]" value="' + Number(item.quantity) + '">' +
+                '<td class="qty">' + qty +
+                    '<input type="hidden" name="items[' + i + '][quantity]" value="' + qty + '">' +
                 '</td>' +
                 '</tr>';
         }).join('');
@@ -934,6 +1114,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
+            '<span class="print-total-qty">Total labels: <strong>' + totalPrintQty + '</strong></span>' +
             '<span class="print-error" id="print-error"></span>' +
             '<button type="button" class="btn-print-cancel" id="print-cancel-btn">Cancel</button>' +
             '<button type="submit" class="btn-print-submit" id="print-submit-btn">Print Labels</button>' +
@@ -1171,6 +1352,136 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         });
     }
 
+    // ── One-off print modal ─────────────────────────────────────────────────
+    var oneoffModal     = document.getElementById('oneoff-modal');
+    var oneoffTitle     = document.getElementById('oneoff-modal-title');
+    var oneoffBody      = document.getElementById('oneoff-modal-body');
+    var oneoffCloseBtn  = document.getElementById('oneoff-modal-close');
+
+    function wireOneoffPrintButtons(container) {
+        container.querySelectorAll('.btn-oneoff-print').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                openOneoffModal(btn);
+            });
+        });
+    }
+
+    function openOneoffModal(btn) {
+        var orderId      = btn.dataset.orderId;
+        var title        = btn.dataset.title;
+        var fullTitle    = btn.dataset.fullTitle;
+        var brand        = btn.dataset.brand;
+        var ml           = btn.dataset.ml;
+        var productId    = btn.dataset.productId;
+
+        oneoffTitle.textContent = 'Print Label — ' + ml + 'ml';
+
+        oneoffBody.innerHTML =
+            '<form id="oneoff-form">' +
+            '<input type="hidden" name="order_id" value="' + esc(orderId) + '">' +
+            '<input type="hidden" name="full_title" value="' + esc(fullTitle) + '">' +
+            '<input type="hidden" name="original_brand" value="' + esc(brand) + '">' +
+            '<input type="hidden" name="ml" value="' + esc(ml) + '">' +
+            '<input type="hidden" name="product_id" value="' + esc(productId) + '">' +
+            '<div class="oneoff-field-group">' +
+                '<label for="oneoff-title">Product Title</label>' +
+                '<input type="text" id="oneoff-title" name="title" value="' + esc(title) + '">' +
+            '</div>' +
+            '<div class="oneoff-field-row">' +
+                '<div class="oneoff-field-group">' +
+                    '<label for="oneoff-brand">Brand</label>' +
+                    '<input type="text" id="oneoff-brand" name="brand" value="' + esc(brand) + '">' +
+                '</div>' +
+                '<div class="oneoff-field-group">' +
+                    '<label>ML Size</label>' +
+                    '<div class="oneoff-ml-display">' + esc(ml) + 'ml</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="oneoff-modal-footer">' +
+                '<span class="print-error" id="oneoff-error"></span>' +
+                '<button type="button" class="btn-oneoff-cancel" id="oneoff-cancel-btn">Cancel</button>' +
+                '<button type="submit" class="btn-oneoff-submit" id="oneoff-submit-btn">Print</button>' +
+            '</div>' +
+            '</form>';
+
+        oneoffModal.hidden = false;
+
+        var cancelBtn = document.getElementById('oneoff-cancel-btn');
+        if (cancelBtn) cancelBtn.addEventListener('click', closeOneoffModal);
+
+        var form = document.getElementById('oneoff-form');
+        if (form) form.addEventListener('submit', handleOneoffSubmit);
+
+        document.getElementById('oneoff-title').focus();
+    }
+
+    function closeOneoffModal() {
+        oneoffModal.hidden = true;
+    }
+
+    if (oneoffCloseBtn) {
+        oneoffCloseBtn.addEventListener('click', closeOneoffModal);
+    }
+
+    oneoffModal.addEventListener('click', function (e) {
+        if (e.target === oneoffModal) closeOneoffModal();
+    });
+
+    function handleOneoffSubmit(e) {
+        e.preventDefault();
+        var form      = e.target;
+        var submitBtn = document.getElementById('oneoff-submit-btn');
+        var errorEl   = document.getElementById('oneoff-error');
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Printing…';
+        submitBtn.classList.remove('oneoff-ok', 'oneoff-fail');
+        errorEl.textContent = '';
+
+        var formData = new FormData();
+        formData.append('order_id', form.querySelector('[name="order_id"]').value);
+        formData.append('action', 'oneoff');
+        formData.append('items[0][title]', form.querySelector('[name="title"]').value);
+        formData.append('items[0][full_title]', form.querySelector('[name="full_title"]').value);
+        formData.append('items[0][custom_brand]', form.querySelector('[name="brand"]').value);
+        formData.append('items[0][original_brand]', form.querySelector('[name="original_brand"]').value);
+        formData.append('items[0][ml]', form.querySelector('[name="ml"]').value);
+        formData.append('items[0][shopify_product_id]', form.querySelector('[name="product_id"]').value);
+        formData.append('items[0][quantity]', '1');
+
+        fetch('api/print-order.php', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': CSRF_TOKEN },
+            body: formData,
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data.ok && data.results && data.results[0] && data.results[0].status === 'ok') {
+                submitBtn.textContent = 'Printed';
+                submitBtn.classList.add('oneoff-ok');
+            } else {
+                submitBtn.textContent = 'Failed';
+                submitBtn.classList.add('oneoff-fail');
+                errorEl.textContent = (data.results && data.results[0] && data.results[0].error) || data.error || 'Print failed';
+            }
+            setTimeout(function () {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Print';
+                submitBtn.classList.remove('oneoff-ok', 'oneoff-fail');
+            }, 3000);
+        })
+        .catch(function () {
+            submitBtn.textContent = 'Error';
+            submitBtn.classList.add('oneoff-fail');
+            errorEl.textContent = 'Network error — please try again.';
+            setTimeout(function () {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Print';
+                submitBtn.classList.remove('oneoff-ok', 'oneoff-fail');
+            }, 3000);
+        });
+    }
+
     function markOrderPrinted(orderId) {
         var row = document.querySelector('tr.order-row[data-order-id="' + orderId + '"]');
         if (row) {
@@ -1244,6 +1555,45 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             .catch(function () {
                 btn.disabled = false;
                 btn.textContent = 'Archive';
+                alert('Network error — please try again.');
+            });
+        });
+    });
+
+    // ── Unarchive ─────────────────────────────────────────────────────────────
+    document.querySelectorAll('.btn-unarchive').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id  = btn.dataset.id;
+            var row = btn.closest('tr');
+
+            btn.disabled = true;
+            btn.textContent = 'Restoring…';
+
+            var body = new URLSearchParams();
+            body.append('id', id);
+
+            fetch('api/unarchive-order.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':  'application/x-www-form-urlencoded',
+                    'X-CSRF-Token':  CSRF_TOKEN,
+                },
+                body: body.toString(),
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    row.classList.add('archived-row');
+                    btn.textContent = 'Restored';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Unarchive';
+                    alert('Could not restore order: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Unarchive';
                 alert('Network error — please try again.');
             });
         });

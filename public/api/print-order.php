@@ -64,8 +64,15 @@ if ($orderId <= 0) {
 
 $db = getDb($config);
 
-// Verify the order exists and is pending.
-$orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ? AND status = 'pending'");
+$action = trim((string) ($_POST['action'] ?? 'print'));
+
+if ($action === 'oneoff') {
+    // One-off prints work on any order status and never change it.
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ?");
+} else {
+    // Regular print/confirm requires pending status.
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ? AND status = 'pending'");
+}
 $orderStmt->execute([$orderId]);
 $order = $orderStmt->fetch();
 
@@ -74,8 +81,6 @@ if (!$order) {
     echo json_encode(['ok' => false, 'error' => 'Order not found or not in pending status.']);
     exit;
 }
-
-$action = trim((string) ($_POST['action'] ?? 'print'));
 
 // ── action=confirm: finalize the order ───────────────────────────────────────
 
@@ -138,12 +143,12 @@ foreach ($items as $idx => $item) {
         $outputStr = implode("\n", $cmdOutput);
         if ($cmdResult !== 0) {
             $logLine = "[{$timestamp}] exit:{$cmdResult} | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\ncmd: {$cmd}\n{$outputStr}\n---\n";
-            file_put_contents($scriptsDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
+            file_put_contents($logDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
             $itemFailed = true;
             $itemError  = $outputStr;
         } else {
             $logLine = "[{$timestamp}] exit:0 | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
-            file_put_contents($scriptsDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
+            file_put_contents($logDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
         }
     }
 
