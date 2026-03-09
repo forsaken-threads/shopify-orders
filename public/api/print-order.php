@@ -110,8 +110,18 @@ foreach ($items as $item) {
     $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
 
     // Execute for each copy (quantity)
+    $scriptsDir = dirname(__DIR__, 2) . '/scripts';
     for ($q = 0; $q < $qty; $q++) {
+        $cmdOutput = [];
+        $cmdResult = 0;
         exec($cmd . ' 2>&1', $cmdOutput, $cmdResult);
+        $outputStr = implode("\n", $cmdOutput);
+        $logLine   = "[{$timestamp}] exit:{$cmdResult} | {$ml}ml | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
+        if ($cmdResult !== 0) {
+            file_put_contents($scriptsDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
+        } else {
+            file_put_contents($scriptsDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
+        }
     }
 
     // Log the label entry
