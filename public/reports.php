@@ -6,7 +6,7 @@ require __DIR__ . '/auth.php';
 
 requireBasicAuth($config['auth_user'], $config['auth_password']);
 
-$pageTitle  = 'Reports - Utility App';
+$pageTitle  = 'Reports - Cent Notes';
 $activePage = 'reports';
 require __DIR__ . '/../app/partials/header.php';
 ?>

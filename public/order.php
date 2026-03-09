@@ -12,7 +12,7 @@ $db = getDb($config);
 $id = (int) ($_GET['id'] ?? 0);
 if ($id <= 0) {
     http_response_code(404);
-    $pageTitle  = 'Order Not Found - Utility App';
+    $pageTitle  = 'Order Not Found - Cent Notes';
     $activePage = 'orders';
     require __DIR__ . '/../app/partials/header.php';
     echo '<div class="main"><div class="empty-state"><strong>Order not found.</strong></div></div>';
@@ -31,7 +31,7 @@ $order = $stmt->fetch();
 
 if (!$order) {
     http_response_code(404);
-    $pageTitle  = 'Order Not Found - Utility App';
+    $pageTitle  = 'Order Not Found - Cent Notes';
     $activePage = 'orders';
     require __DIR__ . '/../app/partials/header.php';
     echo '<div class="main"><div class="empty-state"><strong>Order not found.</strong></div></div>';
@@ -69,7 +69,7 @@ function stripBrandPrefixPhp(string $title, string $brand): string
     return ltrim(preg_replace('/^' . preg_quote($brand, '/') . '\s*/i', '', $title));
 }
 
-$pageTitle  = 'Order ' . htmlspecialchars($order['order_number'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ' - Utility App';
+$pageTitle  = 'Order ' . htmlspecialchars($order['order_number'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ' - Cent Notes';
 $activePage = 'orders';
 require __DIR__ . '/../app/partials/header.php';
 ?>

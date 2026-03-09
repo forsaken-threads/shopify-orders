@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 http_response_code(404);
 
-$pageTitle  = '404 Not Found - Utility App';
+$pageTitle  = '404 Not Found - Cent Notes';
 $activePage = null;
 $hideNav    = true;
 require __DIR__ . '/../app/partials/header.php';

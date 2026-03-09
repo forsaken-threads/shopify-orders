@@ -13,7 +13,7 @@ for ($y = 2024; $y < $currentYear; $y++) {
     $years[] = $y;
 }
 
-$pageTitle  = 'Charts - Utility App';
+$pageTitle  = 'Charts - Cent Notes';
 $activePage = 'charts';
 require __DIR__ . '/../app/partials/header.php';
 ?>

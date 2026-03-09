@@ -8,7 +8,7 @@ $isLoggedIn = isset($_SERVER['PHP_AUTH_USER'])
     && hash_equals($config['auth_user'],     $_SERVER['PHP_AUTH_USER'])
     && hash_equals($config['auth_password'], $_SERVER['PHP_AUTH_PW'] ?? '');
 
-$pageTitle  = 'Home - Utility App';
+$pageTitle  = 'Home - Cent Notes';
 $activePage = null;
 $hideNav    = !$isLoggedIn;
 require __DIR__ . '/../app/partials/header.php';
@@ -96,7 +96,7 @@ require __DIR__ . '/../app/partials/header.php';
                 <path d="M9 12h6M9 16h4"/>
             </svg>
         </div>
-        <h1>Utility App<br>for Decantalize</h1>
+        <h1>Cent Notes<br>for Decantalize</h1>
         <p class="hero-subtitle">
             Manage and review your Shopify orders in one place.
         </p>

@@ -86,7 +86,7 @@ function statusBadge(string $status): string
 // +2 if pending (print + printed/archive group), +1 if archived (unarchive), +1 if printed (pending btn)
 $colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' || $filterStatus === 'printed' ? 8 : 7);
 
-$pageTitle  = 'Orders - Utility App';
+$pageTitle  = 'Orders - Cent Notes';
 $activePage = 'orders';
 require __DIR__ . '/../app/partials/header.php';
 ?>

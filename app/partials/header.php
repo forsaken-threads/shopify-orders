@@ -21,7 +21,7 @@ function h(mixed $v): string
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= h($pageTitle ?? 'Utility App') ?></title>
+    <title><?= h($pageTitle ?? 'Cent Notes') ?></title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -598,7 +598,7 @@ function toggleAccordion(cardId) {
 </script>
 
 <nav class="navbar">
-    <a class="navbar-brand" href="index.php">Utility App</a>
+    <a class="navbar-brand" href="index.php">Cent Notes</a>
     <?php if (!$hideNav): ?>
     <ul class="navbar-nav">
         <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>

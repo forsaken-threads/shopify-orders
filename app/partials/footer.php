@@ -1,6 +1,6 @@
 
 <footer class="footer">
-    &copy; <?= date('Y') ?> Utility App &middot; Decantalize
+    &copy; <?= date('Y') ?> Cent Notes &middot; Decantalize
 </footer>
 
 </body>

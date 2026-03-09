@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 http_response_code(401);
 
-$pageTitle  = '401 Unauthorized - Utility App';
+$pageTitle  = '401 Unauthorized - Cent Notes';
 $activePage = null;
 $hideNav    = true;
 require __DIR__ . '/../app/partials/header.php';
