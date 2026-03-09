@@ -650,6 +650,40 @@ body { min-height: 0; }
     margin-right: auto;
 }
 
+/* ── Print review stage: retry checkboxes & status indicators ──────────── */
+.print-retry-col { width: 2rem; text-align: center; }
+.print-status-col { width: 4.5rem; text-align: center; white-space: nowrap; }
+
+.print-retry-cb {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+    accent-color: #4f46e5;
+}
+
+.label-ok {
+    display: inline-block;
+    padding: .15rem .5rem;
+    background: #dcfce7;
+    color: #166534;
+    border-radius: 4px;
+    font-size: .75rem;
+    font-weight: 600;
+}
+
+.label-fail {
+    display: inline-block;
+    padding: .15rem .5rem;
+    background: #fee2e2;
+    color: #991b1b;
+    border-radius: 4px;
+    font-size: .75rem;
+    font-weight: 600;
+}
+
+tr.print-row-error { background: #fef2f2; }
+tr.print-row-ok td input[type="text"] { opacity: .55; }
+
 /* Row printed state (mirrors archived-row) */
 tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events: none; }
 </style>
@@ -869,24 +903,35 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         var rows = li.map(function (item, i) {
             var strippedTitle = stripBrandPrefix(item.title, item.custom_brand);
             var brand = item.custom_brand || '';
-            return '<tr>' +
+            var ml = item.variant_ml != null ? String(item.variant_ml) : '';
+            return '<tr data-item-index="' + i + '">' +
+                '<td class="print-retry-col" hidden>' +
+                    '<input type="checkbox" class="print-retry-cb" data-index="' + i + '">' +
+                '</td>' +
+                '<td class="print-status-col" hidden></td>' +
                 '<td>' +
                     '<input type="text" name="items[' + i + '][title]" value="' + esc(strippedTitle) + '">' +
                     '<input type="hidden" name="items[' + i + '][full_title]" value="' + esc(item.title) + '">' +
                     '<input type="hidden" name="items[' + i + '][shopify_product_id]" value="' + esc(item.shopify_product_id || '') + '">' +
+                    '<input type="hidden" name="items[' + i + '][ml]" value="' + esc(ml) + '">' +
                 '</td>' +
                 '<td>' +
                     '<input type="text" name="items[' + i + '][custom_brand]" value="' + esc(brand) + '">' +
                     '<input type="hidden" name="items[' + i + '][original_brand]" value="' + esc(brand) + '">' +
                 '</td>' +
-                '<td class="qty">' + Number(item.quantity) + '</td>' +
+                '<td>' + esc(ml ? ml + 'ml' : '') + '</td>' +
+                '<td class="qty">' + Number(item.quantity) +
+                    '<input type="hidden" name="items[' + i + '][quantity]" value="' + Number(item.quantity) + '">' +
+                '</td>' +
                 '</tr>';
         }).join('');
 
         return '<form id="print-form">' +
             '<input type="hidden" name="order_id" value="' + esc(String(o.id)) + '">' +
             '<table><thead><tr>' +
-            '<th>Product Title</th><th>Brand</th><th>Qty</th>' +
+            '<th class="print-retry-col" hidden></th>' +
+            '<th class="print-status-col" hidden></th>' +
+            '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
             '<span class="print-error" id="print-error"></span>' +
@@ -943,17 +988,135 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         activePrintId = null;
     }
 
+    // Show the retry/status columns and update button text based on checkbox state
+    function enterReviewStage(results) {
+        var form = document.getElementById('print-form');
+        if (!form) return;
+
+        // Reveal retry & status columns
+        form.querySelectorAll('.print-retry-col, .print-status-col').forEach(function (el) {
+            el.hidden = false;
+        });
+
+        // Mark each row with its result
+        results.forEach(function (r) {
+            var row = form.querySelector('tr[data-item-index="' + r.index + '"]');
+            if (!row) return;
+            var statusCell = row.querySelector('.print-status-col');
+            var cb = row.querySelector('.print-retry-cb');
+            if (r.status === 'error') {
+                row.classList.add('print-row-error');
+                statusCell.innerHTML = '<span class="label-fail">FAILED</span>';
+                cb.checked = true;
+            } else {
+                row.classList.add('print-row-ok');
+                statusCell.innerHTML = '<span class="label-ok">OK</span>';
+                cb.checked = false;
+            }
+        });
+
+        // Wire checkbox changes to update the button label
+        form.querySelectorAll('.print-retry-cb').forEach(function (cb) {
+            cb.addEventListener('change', updatePrintButton);
+        });
+
+        updatePrintButton();
+    }
+
+    function updatePrintButton() {
+        var form = document.getElementById('print-form');
+        var submitBtn = document.getElementById('print-submit-btn');
+        if (!form || !submitBtn) return;
+
+        var anyChecked = form.querySelector('.print-retry-cb:checked');
+        submitBtn.textContent = anyChecked ? 'Retry' : 'Confirm';
+        submitBtn.disabled = false;
+    }
+
     function handlePrintSubmit(e) {
         e.preventDefault();
         var form      = e.target;
         var submitBtn = document.getElementById('print-submit-btn');
         var errorEl   = document.getElementById('print-error');
+        var orderId   = form.querySelector('[name="order_id"]').value;
 
+        // Determine if we are in review stage (retry/status columns visible)
+        var inReview = !form.querySelector('.print-retry-col').hidden;
+
+        if (inReview) {
+            var anyChecked = form.querySelector('.print-retry-cb:checked');
+
+            if (!anyChecked) {
+                // ── Confirm: all labels accepted, update order status ────
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Confirming…';
+                errorEl.textContent = '';
+
+                var confirmData = new FormData();
+                confirmData.append('order_id', orderId);
+                confirmData.append('action', 'confirm');
+
+                fetch('api/print-order.php', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': CSRF_TOKEN },
+                    body: confirmData,
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.ok) {
+                        closePrintModal();
+                        markOrderPrinted(orderId);
+                    } else {
+                        errorEl.textContent = data.error || 'Unknown error';
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Confirm';
+                    }
+                })
+                .catch(function () {
+                    errorEl.textContent = 'Network error — please try again.';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Confirm';
+                });
+                return;
+            }
+
+            // ── Retry: re-send only checked rows ────────────────────────
+            // Reset visual state on retried rows
+            form.querySelectorAll('.print-retry-cb:checked').forEach(function (cb) {
+                var row = cb.closest('tr');
+                row.classList.remove('print-row-error', 'print-row-ok');
+                row.querySelector('.print-status-col').innerHTML = '';
+            });
+        }
+
+        // ── Print (initial or retry) ────────────────────────────────────
         submitBtn.disabled = true;
         submitBtn.textContent = 'Printing…';
         errorEl.textContent = '';
 
-        var formData = new FormData(form);
+        // Build FormData with only the rows we need to print
+        var formData = new FormData();
+        formData.append('order_id', orderId);
+        formData.append('action', 'print');
+
+        var rows = form.querySelectorAll('tr[data-item-index]');
+        var sendIndex = 0;
+        rows.forEach(function (row) {
+            var idx = row.getAttribute('data-item-index');
+            // On initial print: send all. On retry: only checked rows.
+            if (inReview) {
+                var cb = row.querySelector('.print-retry-cb');
+                if (!cb || !cb.checked) return;
+            }
+            // Collect inputs for this row
+            row.querySelectorAll('input[name^="items[' + idx + ']"]').forEach(function (input) {
+                var name = input.name.replace('items[' + idx + ']', 'items[' + sendIndex + ']');
+                formData.append(name, input.value);
+            });
+            // Stash the original row index so we can map results back
+            formData.append('_row_map[' + sendIndex + ']', idx);
+            sendIndex++;
+        });
 
         fetch('api/print-order.php', {
             method: 'POST',
@@ -962,34 +1125,66 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         })
         .then(function (res) { return res.json(); })
         .then(function (data) {
-            if (data.ok) {
-                var printedOrderId = formData.get('order_id');
-                closePrintModal();
-                // Update the row to reflect printed status
-                var row = document.querySelector('tr.order-row[data-order-id="' + printedOrderId + '"]');
-                if (row) {
-                    row.classList.add('printed-row');
-                    var printBtn = row.querySelector('.btn-print');
-                    if (printBtn) {
-                        printBtn.textContent = 'Printed';
-                        printBtn.disabled = true;
-                    }
-                    var archiveBtn = row.querySelector('.btn-archive');
-                    if (archiveBtn) {
-                        archiveBtn.disabled = true;
-                    }
-                }
-            } else {
+            if (!data.ok) {
                 errorEl.textContent = data.error || 'Unknown error';
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Print Labels';
+                submitBtn.textContent = inReview ? 'Retry' : 'Print Labels';
+                return;
+            }
+
+            // Map results back to original row indices
+            var mapped = (data.results || []).map(function (r) {
+                var origIdx = formData.get('_row_map[' + r.index + ']');
+                return { index: origIdx != null ? Number(origIdx) : r.index, title: r.title, status: r.status, error: r.error };
+            });
+
+            if (inReview) {
+                // Merge with existing results: keep previous OK rows, update retried rows
+                rows.forEach(function (row) {
+                    var idx = Number(row.getAttribute('data-item-index'));
+                    var retried = mapped.find(function (m) { return m.index === idx; });
+                    if (retried) {
+                        var statusCell = row.querySelector('.print-status-col');
+                        var cb = row.querySelector('.print-retry-cb');
+                        row.classList.remove('print-row-error', 'print-row-ok');
+                        if (retried.status === 'error') {
+                            row.classList.add('print-row-error');
+                            statusCell.innerHTML = '<span class="label-fail">FAILED</span>';
+                            cb.checked = true;
+                        } else {
+                            row.classList.add('print-row-ok');
+                            statusCell.innerHTML = '<span class="label-ok">OK</span>';
+                            cb.checked = false;
+                        }
+                    }
+                });
+                updatePrintButton();
+            } else {
+                // First print — enter the review stage
+                enterReviewStage(mapped);
             }
         })
         .catch(function () {
             errorEl.textContent = 'Network error — please try again.';
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Print Labels';
+            submitBtn.textContent = inReview ? 'Retry' : 'Print Labels';
         });
+    }
+
+    function markOrderPrinted(orderId) {
+        var row = document.querySelector('tr.order-row[data-order-id="' + orderId + '"]');
+        if (row) {
+            row.classList.add('printed-row');
+            var printBtn = row.querySelector('.btn-print');
+            if (printBtn) {
+                printBtn.textContent = 'Printed';
+                printBtn.disabled = true;
+            }
+            var archiveBtn = row.querySelector('.btn-archive');
+            if (archiveBtn) {
+                archiveBtn.disabled = true;
+            }
+        }
     }
 
     if (printCloseBtn) {
