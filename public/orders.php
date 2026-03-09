@@ -81,8 +81,8 @@ function statusBadge(string $status): string
 
 // Number of visible columns (used for accordion colspan).
 // Base: expand, order, customer, total, items, status, order-date = 7
-// +2 if pending (print + archive buttons), +1 if archived (unarchive button)
-$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' ? 8 : 7);
+// +2 if pending (print + printed/archive group), +1 if archived (unarchive), +1 if printed (pending btn)
+$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' || $filterStatus === 'printed' ? 8 : 7);
 
 $pageTitle  = 'Orders - Utility App';
 $activePage = 'orders';
@@ -128,6 +128,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th class="hide-mobile">Status</th>
                     <th>Order Date</th>
                     <?php if ($filterStatus === 'pending'): ?><th></th><th></th><?php endif; ?>
+                    <?php if ($filterStatus === 'printed'): ?><th></th><?php endif; ?>
                     <?php if ($filterStatus === 'archived'): ?><th></th><?php endif; ?>
                 </tr>
             </thead>
@@ -170,10 +171,33 @@ require __DIR__ . '/../app/partials/header.php';
                         </button>
                     </td>
                     <td>
-                        <button class="btn-archive"
+                        <div class="btn-group">
+                            <button class="btn-set-printed"
+                                    data-id="<?= $oid ?>"
+                                    title="Mark order <?= h($order['order_number']) ?> as printed">
+                                Printed
+                            </button>
+                            <button class="btn-group-toggle"
+                                    data-id="<?= $oid ?>"
+                                    aria-expanded="false"
+                                    aria-label="More actions"
+                                    title="More actions">&#9662;</button>
+                            <div class="btn-group-menu" hidden>
+                                <button class="btn-group-item btn-archive"
+                                        data-id="<?= $oid ?>"
+                                        title="Archive order <?= h($order['order_number']) ?>">
+                                    Archive
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                    <?php endif; ?>
+                    <?php if ($filterStatus === 'printed'): ?>
+                    <td>
+                        <button class="btn-revert-pending"
                                 data-id="<?= $oid ?>"
-                                title="Archive order <?= h($order['order_number']) ?>">
-                            Archive
+                                title="Move order <?= h($order['order_number']) ?> back to pending">
+                            Pending
                         </button>
                     </td>
                     <?php endif; ?>
@@ -489,6 +513,96 @@ body { min-height: 0; }
 .btn-unarchive:hover { background: var(--accent, #4f46e5); color: #fff; }
 .btn-unarchive:disabled { opacity: .45; cursor: default; }
 
+/* ── Button group (Printed + dropdown) ──────────────────────────────── */
+.btn-group {
+    position: relative;
+    display: inline-flex;
+    white-space: nowrap;
+}
+
+.btn-set-printed {
+    display: inline-block;
+    padding: .4rem 1rem;
+    background: transparent;
+    color: #166534;
+    border: 1px solid #166534;
+    border-radius: 6px 0 0 6px;
+    font-size: .8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-set-printed:hover { background: #166534; color: #fff; }
+.btn-set-printed:disabled { opacity: .45; cursor: default; }
+
+.btn-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: .4rem .5rem;
+    background: transparent;
+    color: #166534;
+    border: 1px solid #166534;
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+    font-size: .7rem;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-group-toggle:hover { background: #166534; color: #fff; }
+
+.btn-group-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 10;
+    margin-top: 2px;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border, #d1d5db);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.12);
+    min-width: 100%;
+}
+
+.btn-group-menu[hidden] { display: none; }
+
+.btn-group-item {
+    display: block;
+    width: 100%;
+    padding: .45rem .75rem;
+    background: transparent;
+    border: none;
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--text, #374151);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    transition: background .15s;
+}
+
+.btn-group-item:hover { background: var(--bg-subtle, #f3f4f6); }
+
+/* ── Revert to Pending button (printed tab) ─────────────────────────── */
+.btn-revert-pending {
+    display: inline-block;
+    padding: .4rem 1rem;
+    background: transparent;
+    color: var(--accent, #4f46e5);
+    border: 1px solid var(--accent, #4f46e5);
+    border-radius: 6px;
+    font-size: .8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-revert-pending:hover { background: var(--accent, #4f46e5); color: #fff; }
+.btn-revert-pending:disabled { opacity: .45; cursor: default; }
+
 /* Row printed state (mirrors archived-row) */
 tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events: none; }
 </style>
@@ -718,10 +832,13 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                 printBtn.textContent = 'Printed';
                 printBtn.disabled = true;
             }
-            var archiveBtn = row.querySelector('.btn-archive');
-            if (archiveBtn) {
-                archiveBtn.disabled = true;
+            var setPrintedBtn = row.querySelector('.btn-set-printed');
+            if (setPrintedBtn) {
+                setPrintedBtn.textContent = 'Printed';
+                setPrintedBtn.disabled = true;
             }
+            var groupToggle = row.querySelector('.btn-group-toggle');
+            if (groupToggle) groupToggle.disabled = true;
         }
     }
 
@@ -776,6 +893,106 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             .catch(function () {
                 btn.disabled = false;
                 btn.textContent = 'Archive';
+                alert('Network error — please try again.');
+            });
+        });
+    });
+
+    // ── Button group toggle (dropdown) ──────────────────────────────────────
+    document.querySelectorAll('.btn-group-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var menu = btn.parentElement.querySelector('.btn-group-menu');
+            var isOpen = !menu.hidden;
+            // Close all open menus first
+            document.querySelectorAll('.btn-group-menu').forEach(function (m) { m.hidden = true; });
+            document.querySelectorAll('.btn-group-toggle').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+            if (!isOpen) {
+                menu.hidden = false;
+                btn.setAttribute('aria-expanded', 'true');
+            }
+        });
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', function () {
+        document.querySelectorAll('.btn-group-menu').forEach(function (m) { m.hidden = true; });
+        document.querySelectorAll('.btn-group-toggle').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+    });
+
+    // ── Set Printed (from button group) ─────────────────────────────────────
+    document.querySelectorAll('.btn-set-printed').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id  = btn.dataset.id;
+            var row = btn.closest('tr');
+
+            btn.disabled = true;
+            btn.textContent = 'Updating…';
+
+            var body = new URLSearchParams();
+            body.append('id', id);
+
+            fetch('api/set-printed.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':  'application/x-www-form-urlencoded',
+                    'X-CSRF-Token':  CSRF_TOKEN,
+                },
+                body: body.toString(),
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    row.classList.add('printed-row');
+                    btn.textContent = 'Printed';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Printed';
+                    alert('Could not update order: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Printed';
+                alert('Network error — please try again.');
+            });
+        });
+    });
+
+    // ── Revert to Pending (from printed tab) ─────────────────────────────────
+    document.querySelectorAll('.btn-revert-pending').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id  = btn.dataset.id;
+            var row = btn.closest('tr');
+
+            btn.disabled = true;
+            btn.textContent = 'Reverting…';
+
+            var body = new URLSearchParams();
+            body.append('id', id);
+
+            fetch('api/revert-to-pending.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':  'application/x-www-form-urlencoded',
+                    'X-CSRF-Token':  CSRF_TOKEN,
+                },
+                body: body.toString(),
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    row.classList.add('archived-row');
+                    btn.textContent = 'Reverted';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Pending';
+                    alert('Could not revert order: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Pending';
                 alert('Network error — please try again.');
             });
         });

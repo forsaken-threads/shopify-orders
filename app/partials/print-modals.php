@@ -473,6 +473,48 @@ var PrintModals = (function () {
         var form = document.getElementById('print-form');
         if (!form) return;
 
+        // Check if all labels printed successfully
+        var hasFailures = results.some(function (r) { return r.status === 'error'; });
+
+        // If all labels succeeded, auto-confirm without showing retry step
+        if (!hasFailures) {
+            var submitBtn = document.getElementById('print-submit-btn');
+            var errorEl   = document.getElementById('print-error');
+            var orderId   = form.querySelector('[name="order_id"]').value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Confirming…';
+            errorEl.textContent = '';
+
+            var confirmData = new FormData();
+            confirmData.append('order_id', orderId);
+            confirmData.append('action', 'confirm');
+
+            fetch('api/print-order.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': CSRF_TOKEN },
+                body: confirmData,
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    closePrintModal();
+                    if (_onPrintConfirm) _onPrintConfirm(orderId);
+                } else {
+                    errorEl.textContent = data.error || 'Unknown error';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Confirm';
+                }
+            })
+            .catch(function () {
+                errorEl.textContent = 'Network error — please try again.';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Confirm';
+            });
+            return;
+        }
+
+        // Some labels failed — show the retry UI
         form.querySelectorAll('.print-retry-col, .print-status-col').forEach(function (el) {
             el.hidden = false;
         });
