@@ -138,12 +138,12 @@ foreach ($items as $idx => $item) {
         $outputStr = implode("\n", $cmdOutput);
         if ($cmdResult !== 0) {
             $logLine = "[{$timestamp}] exit:{$cmdResult} | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\ncmd: {$cmd}\n{$outputStr}\n---\n";
-            file_put_contents($scriptsDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
+            file_put_contents($logDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
             $itemFailed = true;
             $itemError  = $outputStr;
         } else {
             $logLine = "[{$timestamp}] exit:0 | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
-            file_put_contents($scriptsDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
+            file_put_contents($logDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
         }
     }
 

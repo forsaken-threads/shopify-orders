@@ -81,8 +81,8 @@ function statusBadge(string $status): string
 
 // Number of visible columns (used for accordion colspan).
 // Base: expand, order, customer, total, items, status, order-date = 7
-// +2 if pending (print + archive buttons)
-$colCount = $filterStatus === 'pending' ? 9 : 7;
+// +2 if pending (print + archive buttons), +1 if archived (unarchive button)
+$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' ? 8 : 7);
 
 $pageTitle  = 'Orders - Utility App';
 $activePage = 'orders';
@@ -128,6 +128,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th class="hide-mobile">Status</th>
                     <th>Order Date</th>
                     <?php if ($filterStatus === 'pending'): ?><th></th><th></th><?php endif; ?>
+                    <?php if ($filterStatus === 'archived'): ?><th></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -173,6 +174,15 @@ require __DIR__ . '/../app/partials/header.php';
                                 data-id="<?= $oid ?>"
                                 title="Archive order <?= h($order['order_number']) ?>">
                             Archive
+                        </button>
+                    </td>
+                    <?php endif; ?>
+                    <?php if ($filterStatus === 'archived'): ?>
+                    <td>
+                        <button class="btn-unarchive"
+                                data-id="<?= $oid ?>"
+                                title="Move order <?= h($order['order_number']) ?> back to pending">
+                            Unarchive
                         </button>
                     </td>
                     <?php endif; ?>
@@ -644,10 +654,15 @@ body { min-height: 0; }
 
 .btn-print-cancel:hover { background: #f3f4f6; color: #333; }
 
+.print-total-qty {
+    font-size: .85rem;
+    color: var(--text, #374151);
+    margin-right: auto;
+}
+
 .print-error {
     color: #b91c1c;
     font-size: .85rem;
-    margin-right: auto;
 }
 
 /* ── Print review stage: retry checkboxes & status indicators ──────────── */
@@ -683,6 +698,24 @@ body { min-height: 0; }
 
 tr.print-row-error { background: #fef2f2; }
 tr.print-row-ok td input[type="text"] { opacity: .55; }
+
+/* ── Unarchive button ─────────────────────────────────────────────────── */
+.btn-unarchive {
+    display: inline-block;
+    padding: .4rem 1rem;
+    background: transparent;
+    color: var(--accent, #4f46e5);
+    border: 1px solid var(--accent, #4f46e5);
+    border-radius: 6px;
+    font-size: .8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.btn-unarchive:hover { background: var(--accent, #4f46e5); color: #fff; }
+.btn-unarchive:disabled { opacity: .45; cursor: default; }
 
 /* Row printed state (mirrors archived-row) */
 tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events: none; }
@@ -900,10 +933,13 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             return '<p style="color:#888;font-size:.85rem;">No line items to print.</p>';
         }
 
+        var totalPrintQty = 0;
         var rows = li.map(function (item, i) {
             var strippedTitle = stripBrandPrefix(item.title, item.custom_brand);
             var brand = item.custom_brand || '';
             var ml = item.variant_ml != null ? String(item.variant_ml) : '';
+            var qty = Number(item.quantity);
+            totalPrintQty += qty;
             return '<tr data-item-index="' + i + '">' +
                 '<td class="print-retry-col" hidden>' +
                     '<input type="checkbox" class="print-retry-cb" data-index="' + i + '">' +
@@ -920,8 +956,8 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                     '<input type="hidden" name="items[' + i + '][original_brand]" value="' + esc(brand) + '">' +
                 '</td>' +
                 '<td>' + esc(ml ? ml + 'ml' : '') + '</td>' +
-                '<td class="qty">' + Number(item.quantity) +
-                    '<input type="hidden" name="items[' + i + '][quantity]" value="' + Number(item.quantity) + '">' +
+                '<td class="qty">' + qty +
+                    '<input type="hidden" name="items[' + i + '][quantity]" value="' + qty + '">' +
                 '</td>' +
                 '</tr>';
         }).join('');
@@ -934,6 +970,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
+            '<span class="print-total-qty">Total labels: <strong>' + totalPrintQty + '</strong></span>' +
             '<span class="print-error" id="print-error"></span>' +
             '<button type="button" class="btn-print-cancel" id="print-cancel-btn">Cancel</button>' +
             '<button type="submit" class="btn-print-submit" id="print-submit-btn">Print Labels</button>' +
@@ -1244,6 +1281,45 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             .catch(function () {
                 btn.disabled = false;
                 btn.textContent = 'Archive';
+                alert('Network error — please try again.');
+            });
+        });
+    });
+
+    // ── Unarchive ─────────────────────────────────────────────────────────────
+    document.querySelectorAll('.btn-unarchive').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id  = btn.dataset.id;
+            var row = btn.closest('tr');
+
+            btn.disabled = true;
+            btn.textContent = 'Restoring…';
+
+            var body = new URLSearchParams();
+            body.append('id', id);
+
+            fetch('api/unarchive-order.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':  'application/x-www-form-urlencoded',
+                    'X-CSRF-Token':  CSRF_TOKEN,
+                },
+                body: body.toString(),
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    row.classList.add('archived-row');
+                    btn.textContent = 'Restored';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Unarchive';
+                    alert('Could not restore order: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Unarchive';
                 alert('Network error — please try again.');
             });
         });
