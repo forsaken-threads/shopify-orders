@@ -2,10 +2,13 @@
 declare(strict_types=1);
 
 /**
- * Print labels for an order.
+ * Print labels for an order (two-stage flow).
  *
  * POST /api/print-order.php
  * Body (multipart/form-data):
+ *   action              — "print" (default) or "confirm"
+ *
+ * action=print:
  *   order_id            — internal order PK
  *   items[i][title]     — (possibly edited) stripped product title
  *   items[i][full_title]— original full product title
@@ -13,14 +16,16 @@ declare(strict_types=1);
  *   items[i][original_brand]  — original brand value
  *   items[i][shopify_product_id] — Shopify product ID
  *   items[i][ml]              — variant ML size (1, 5, or 10)
+ *   items[i][quantity]        — label quantity
+ * Returns: {ok:true, results:[{index, title, status:"ok"|"error", error?}]}
+ * Does NOT update order status — the user must confirm after reviewing.
+ *
+ * action=confirm:
+ *   order_id            — internal order PK
+ * Updates order status to 'printed'.
+ * Returns: {ok:true}
+ *
  * Header: X-CSRF-Token: <token>
- *
- * 1. Logs each label to ./logs/print-labels.log
- * 2. Updates order status from 'pending' to 'printed'
- * 3. For any brand changes, logs to ./logs/brand-updates.log
- *    (stubbed — would call Shopify Admin API to update product metafield)
- *
- * Returns JSON {ok:true} on success or {ok:false,error:"..."} on failure.
  */
 
 $config = require __DIR__ . '/../../app/config.php';
@@ -48,19 +53,12 @@ if ($sessionToken === '' || !hash_equals($sessionToken, $providedToken)) {
     exit;
 }
 
-// ── Validate input ────────────────────────────────────────────────────────────
+// ── Validate order_id ────────────────────────────────────────────────────────
 
 $orderId = (int) ($_POST['order_id'] ?? 0);
 if ($orderId <= 0) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'Invalid order ID.']);
-    exit;
-}
-
-$items = $_POST['items'] ?? [];
-if (!is_array($items) || count($items) === 0) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'No line items provided.']);
     exit;
 }
 
@@ -77,19 +75,38 @@ if (!$order) {
     exit;
 }
 
-// ── Log labels ────────────────────────────────────────────────────────────────
+$action = trim((string) ($_POST['action'] ?? 'print'));
 
-$logDir  = dirname(__DIR__, 2) . '/logs';
-$labelLog = $logDir . '/print-labels.log';
+// ── action=confirm: finalize the order ───────────────────────────────────────
 
-$brandChanges = [];
-$labelEntries = '';
-$validMlSizes = ['1', '5', '10'];
-$timestamp    = date('Y-m-d H:i:s');
-$hasErrors    = false;
-$failedItems  = [];
+if ($action === 'confirm') {
+    $db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pending'")
+       ->execute([$orderId]);
 
-foreach ($items as $item) {
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+// ── action=print: execute print commands and return per-item results ─────────
+
+$items = $_POST['items'] ?? [];
+if (!is_array($items) || count($items) === 0) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'No line items provided.']);
+    exit;
+}
+
+$logDir     = dirname(__DIR__, 2) . '/logs';
+$scriptsDir = dirname(__DIR__, 2) . '/scripts';
+$labelLog   = $logDir . '/print-labels.log';
+
+$brandChanges  = [];
+$labelEntries  = '';
+$validMlSizes  = ['1', '5', '10'];
+$timestamp     = date('Y-m-d H:i:s');
+$results       = [];   // per-item status to return to the frontend
+
+foreach ($items as $idx => $item) {
     $title         = trim((string) ($item['title'] ?? ''));
     $brand         = trim((string) ($item['custom_brand'] ?? ''));
     $originalBrand = (string) ($item['original_brand'] ?? '');
@@ -111,8 +128,9 @@ foreach ($items as $item) {
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
 
-    // Execute for each copy (quantity)
-    $scriptsDir = dirname(__DIR__, 2) . '/scripts';
+    // Execute for each copy (quantity) — track per-item success
+    $itemFailed = false;
+    $itemError  = '';
     for ($q = 0; $q < $qty; $q++) {
         $cmdOutput = [];
         $cmdResult = 0;
@@ -121,16 +139,22 @@ foreach ($items as $item) {
         if ($cmdResult !== 0) {
             $logLine = "[{$timestamp}] exit:{$cmdResult} | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\ncmd: {$cmd}\n{$outputStr}\n---\n";
             file_put_contents($scriptsDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
-            $hasErrors = true;
-            $failedItems[] = $title;
+            $itemFailed = true;
+            $itemError  = $outputStr;
         } else {
             $logLine = "[{$timestamp}] exit:0 | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
             file_put_contents($scriptsDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
         }
     }
 
+    $result = ['index' => (int) $idx, 'title' => $title, 'status' => $itemFailed ? 'error' : 'ok'];
+    if ($itemFailed) {
+        $result['error'] = $itemError;
+    }
+    $results[] = $result;
+
     // Log the label entry
-    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']} | exit:{$cmdResult}\n";
+    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']} | " . ($itemFailed ? 'FAIL' : 'ok') . "\n";
 
     if ($originalBrand !== $brand && $productId !== '') {
         $brandChanges[] = [
@@ -144,28 +168,7 @@ foreach ($items as $item) {
 
 file_put_contents($labelLog, $labelEntries, FILE_APPEND | LOCK_EX);
 
-// ── If any labels failed, abort without updating order status ────────────────
-
-if ($hasErrors) {
-    http_response_code(500);
-    echo json_encode([
-        'ok'    => false,
-        'error' => 'Print failed for: ' . implode(', ', $failedItems) . '. Check print-errors.log for details.',
-    ]);
-    exit;
-}
-
-// ── Update order status to printed ────────────────────────────────────────────
-
-$db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pending'")
-   ->execute([$orderId]);
-
 // ── Log brand changes (stub for Shopify Admin API metafield update) ───────────
-//
-// In production this would call:
-//   PUT https://{shop}/admin/api/{version}/products/{product_id}/metafields.json
-// with the updated custom.brand value. That update triggers a products/update
-// webhook which would sync the change back to our local products table.
 
 if (!empty($brandChanges)) {
     $brandLog = $logDir . '/brand-updates.log';
@@ -186,4 +189,5 @@ if (!empty($brandChanges)) {
     }
 }
 
-echo json_encode(['ok' => true]);
+// Return per-item results — never update order status here
+echo json_encode(['ok' => true, 'results' => $results]);
