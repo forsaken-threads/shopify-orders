@@ -199,11 +199,13 @@ require __DIR__ . '/../app/partials/header.php';
         <h1>Order <?= h($order['order_number']) ?></h1>
         <?= statusBadgeOrder($order['status']) ?>
         <div class="order-page-actions">
+            <?php if ($order['status'] === 'pending'): ?>
             <button class="btn-print" id="order-print-btn"
                     data-id="<?= $id ?>"
                     data-order-number="<?= h($order['order_number']) ?>">
                 Print
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -251,7 +253,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th>Qty</th>
                     <th>Unit Price</th>
                     <th>Line Total</th>
-                    <th></th>
+                    <?php if ($order['status'] !== 'pending'): ?><th></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -272,6 +274,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <td class="qty"><?= $qty ?></td>
                     <td class="price"><?= number_format($unitPrice, 2) ?></td>
                     <td class="price"><?= number_format($unitPrice * $qty, 2) ?></td>
+                    <?php if ($order['status'] !== 'pending'): ?>
                     <td class="oneoff-print-cell">
                         <?php if ($ml !== null): ?>
                         <button class="btn-oneoff-print"
@@ -284,6 +287,7 @@ require __DIR__ . '/../app/partials/header.php';
                                 title="Print one label">Print</button>
                         <?php endif; ?>
                     </td>
+                    <?php endif; ?>
                 </tr>
             <?php endforeach; ?>
             </tbody>
