@@ -543,7 +543,10 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                 var qty       = Number(item.quantity);
                 var ml        = item.variant_ml != null ? String(item.variant_ml) : '';
                 var brand     = item.custom_brand || '';
-                var strippedTitle = stripBrandPrefix(item.title, brand);
+                var preferredTitle = item.preferred_title != null ? item.preferred_title : null;
+                var preferredBrand = item.preferred_brand != null ? item.preferred_brand : null;
+                var strippedTitle = preferredTitle != null ? preferredTitle : stripBrandPrefix(item.title, brand);
+                var displayBrand  = preferredBrand != null ? preferredBrand : brand;
                 return '<tr>' +
                     '<td>' + esc(item.title) + '</td>' +
                     '<td>' + esc(item.variant_title) + '</td>' +
@@ -559,9 +562,11 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                             ' data-order-id="' + esc(String(o.id)) + '"' +
                             ' data-title="' + esc(strippedTitle) + '"' +
                             ' data-full-title="' + esc(item.title) + '"' +
-                            ' data-brand="' + esc(brand) + '"' +
+                            ' data-brand="' + esc(displayBrand) + '"' +
                             ' data-ml="' + esc(ml) + '"' +
                             ' data-product-id="' + esc(item.shopify_product_id || '') + '"' +
+                            ' data-preferred-title="' + esc(preferredTitle || '') + '"' +
+                            ' data-preferred-brand="' + esc(preferredBrand || '') + '"' +
                             ' title="Print one label">Print</button>' : '') +
                     '</td>' +
                     '</tr>';
