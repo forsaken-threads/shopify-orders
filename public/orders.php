@@ -869,24 +869,29 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
         var rows = li.map(function (item, i) {
             var strippedTitle = stripBrandPrefix(item.title, item.custom_brand);
             var brand = item.custom_brand || '';
+            var ml = item.variant_ml != null ? String(item.variant_ml) : '';
             return '<tr>' +
                 '<td>' +
                     '<input type="text" name="items[' + i + '][title]" value="' + esc(strippedTitle) + '">' +
                     '<input type="hidden" name="items[' + i + '][full_title]" value="' + esc(item.title) + '">' +
                     '<input type="hidden" name="items[' + i + '][shopify_product_id]" value="' + esc(item.shopify_product_id || '') + '">' +
+                    '<input type="hidden" name="items[' + i + '][ml]" value="' + esc(ml) + '">' +
                 '</td>' +
                 '<td>' +
                     '<input type="text" name="items[' + i + '][custom_brand]" value="' + esc(brand) + '">' +
                     '<input type="hidden" name="items[' + i + '][original_brand]" value="' + esc(brand) + '">' +
                 '</td>' +
-                '<td class="qty">' + Number(item.quantity) + '</td>' +
+                '<td>' + esc(ml ? ml + 'ml' : '') + '</td>' +
+                '<td class="qty">' + Number(item.quantity) +
+                    '<input type="hidden" name="items[' + i + '][quantity]" value="' + Number(item.quantity) + '">' +
+                '</td>' +
                 '</tr>';
         }).join('');
 
         return '<form id="print-form">' +
             '<input type="hidden" name="order_id" value="' + esc(String(o.id)) + '">' +
             '<table><thead><tr>' +
-            '<th>Product Title</th><th>Brand</th><th>Qty</th>' +
+            '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
             '<span class="print-error" id="print-error"></span>' +

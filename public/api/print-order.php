@@ -12,6 +12,7 @@ declare(strict_types=1);
  *   items[i][custom_brand]    — (possibly edited) brand
  *   items[i][original_brand]  — original brand value
  *   items[i][shopify_product_id] — Shopify product ID
+ *   items[i][ml]              — variant ML size (1, 5, or 10)
  * Header: X-CSRF-Token: <token>
  *
  * 1. Logs each label to ./logs/print-labels.log
@@ -83,6 +84,8 @@ $labelLog = $logDir . '/print-labels.log';
 
 $brandChanges = [];
 $labelEntries = '';
+$validMlSizes = ['1', '5', '10'];
+$timestamp    = date('Y-m-d H:i:s');
 
 foreach ($items as $item) {
     $title         = trim((string) ($item['title'] ?? ''));
@@ -90,8 +93,29 @@ foreach ($items as $item) {
     $originalBrand = (string) ($item['original_brand'] ?? '');
     $fullTitle     = trim((string) ($item['full_title'] ?? ''));
     $productId     = trim((string) ($item['shopify_product_id'] ?? ''));
+    $ml            = trim((string) ($item['ml'] ?? ''));
 
-    $labelEntries .= $title . "\n" . $brand . "\n" . $order['shopify_order_id'] . "\n" . "---\n";
+    if (!in_array($ml, $validMlSizes, true)) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Invalid or missing ML size for item: ' . $title]);
+        exit;
+    }
+
+    $qty = max(1, (int) ($item['quantity'] ?? 1));
+
+    // Build the SSH print command — the remote command is passed via escapeshellarg
+    // to avoid nested quoting issues with single quotes inside the ssh '...' wrapper.
+    $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label-' . $ml . 'ml.py '
+               . escapeshellarg($title) . ' ' . escapeshellarg($brand);
+    $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
+
+    // Execute for each copy (quantity)
+    for ($q = 0; $q < $qty; $q++) {
+        exec($cmd . ' 2>&1', $cmdOutput, $cmdResult);
+    }
+
+    // Log the label entry
+    $labelEntries .= "[{$timestamp}] {$ml}ml | {$title} | {$brand} | order:{$order['shopify_order_id']} | exit:{$cmdResult}\n";
 
     if ($originalBrand !== $brand && $productId !== '') {
         $brandChanges[] = [
@@ -119,7 +143,6 @@ $db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pe
 
 if (!empty($brandChanges)) {
     $brandLog = $logDir . '/brand-updates.log';
-    $timestamp = date('Y-m-d H:i:s');
 
     foreach ($brandChanges as $change) {
         $entry = [
