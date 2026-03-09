@@ -66,7 +66,7 @@ function stripBrandPrefixPhp(string $title, string $brand): string
     return ltrim(preg_replace('/^' . preg_quote($brand, '/') . '\s*/i', '', $title));
 }
 
-$pageTitle  = 'Order ' . h($order['order_number']) . ' - Utility App';
+$pageTitle  = 'Order ' . htmlspecialchars($order['order_number'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ' - Utility App';
 $activePage = 'orders';
 require __DIR__ . '/../app/partials/header.php';
 ?>
