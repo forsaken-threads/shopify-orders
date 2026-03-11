@@ -68,25 +68,28 @@ $action = trim((string) ($_POST['action'] ?? 'print'));
 
 if ($action === 'oneoff') {
     // One-off prints work on any order status and never change it.
-    $orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ?");
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
 } else {
-    // Regular print/confirm requires pending status.
-    $orderStmt = $db->prepare("SELECT id, shopify_order_id FROM orders WHERE id = ? AND status = 'pending'");
+    // Regular print/confirm requires pending or fulfilled status.
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ? AND status IN ('pending', 'fulfilled')");
 }
 $orderStmt->execute([$orderId]);
 $order = $orderStmt->fetch();
 
 if (!$order) {
     http_response_code(404);
-    echo json_encode(['ok' => false, 'error' => 'Order not found or not in pending status.']);
+    echo json_encode(['ok' => false, 'error' => 'Order not found or not in a printable status.']);
     exit;
 }
 
 // ── action=confirm: finalize the order ───────────────────────────────────────
 
 if ($action === 'confirm') {
-    $db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pending'")
-       ->execute([$orderId]);
+    // Only transition pending → printed; fulfilled orders keep their status.
+    if ($order['status'] === 'pending') {
+        $db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pending'")
+           ->execute([$orderId]);
+    }
 
     echo json_encode(['ok' => true]);
     exit;

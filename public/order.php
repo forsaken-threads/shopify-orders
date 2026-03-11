@@ -202,7 +202,7 @@ require __DIR__ . '/../app/partials/header.php';
         <h1>Order <?= h($order['order_number']) ?></h1>
         <?= statusBadgeOrder($order['status']) ?>
         <div class="order-page-actions">
-            <?php if ($order['status'] === 'pending'): ?>
+            <?php if ($order['status'] === 'pending' || $order['status'] === 'fulfilled'): ?>
             <button class="btn-print" id="order-print-btn"
                     data-id="<?= $id ?>"
                     data-order-number="<?= h($order['order_number']) ?>">

@@ -84,7 +84,7 @@ function statusBadge(string $status): string
 // Number of visible columns (used for accordion colspan).
 // Base: expand, order, customer, total, items, status, order-date = 7
 // +2 if pending (print + printed/archive group), +1 if archived (unarchive), +1 if printed (pending btn)
-$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' || $filterStatus === 'printed' ? 8 : 7);
+$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' || $filterStatus === 'printed' || $filterStatus === 'fulfilled' ? 8 : 7);
 
 $pageTitle  = 'Orders - Cent Notes';
 $activePage = 'orders';
@@ -130,6 +130,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th class="hide-mobile">Status</th>
                     <th>Order Date</th>
                     <?php if ($filterStatus === 'pending'): ?><th></th><th></th><?php endif; ?>
+                    <?php if ($filterStatus === 'fulfilled'): ?><th></th><?php endif; ?>
                     <?php if ($filterStatus === 'printed'): ?><th></th><?php endif; ?>
                     <?php if ($filterStatus === 'archived'): ?><th></th><?php endif; ?>
                 </tr>
@@ -192,6 +193,16 @@ require __DIR__ . '/../app/partials/header.php';
                                 </button>
                             </div>
                         </div>
+                    </td>
+                    <?php endif; ?>
+                    <?php if ($filterStatus === 'fulfilled'): ?>
+                    <td>
+                        <button class="btn-print"
+                                data-id="<?= $oid ?>"
+                                data-order-number="<?= h($order['order_number']) ?>"
+                                title="Print labels for order <?= h($order['order_number']) ?>">
+                            Print
+                        </button>
                     </td>
                     <?php endif; ?>
                     <?php if ($filterStatus === 'printed'): ?>
