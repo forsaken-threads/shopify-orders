@@ -126,7 +126,9 @@ foreach ($items as $idx => $item) {
     $preferredTitle = (string) ($item['preferred_title'] ?? '');
     $preferredBrand = (string) ($item['preferred_brand'] ?? '');
 
-    if (!in_array($ml, $validMlSizes, true)) {
+    $isOrderLabel = ($ml === 'order');
+
+    if (!$isOrderLabel && !in_array($ml, $validMlSizes, true)) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Invalid or missing ML size for item: ' . $title]);
         exit;
@@ -135,7 +137,7 @@ foreach ($items as $idx => $item) {
     $qty = max(1, (int) ($item['quantity'] ?? 1));
 
     // Build the SSH print command
-    $mlArg = $ml . 'ml';
+    $mlArg = $isOrderLabel ? 'Order' : $ml . 'ml';
     $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
@@ -170,7 +172,7 @@ foreach ($items as $idx => $item) {
 
     // Update preferred title/brand in products table if the submitted values
     // differ from the current preferences.
-    if ($productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
+    if (!$isOrderLabel && $productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
         $prefUpdateStmt->execute([$title, $brand, $productId]);
     }
 }
