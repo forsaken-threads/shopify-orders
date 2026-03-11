@@ -344,6 +344,11 @@ require __DIR__ . '/../app/partials/header.php';
                             <span class="ff-toggle-swatch" style="background:#e67e22"></span>
                             Orders Received
                         </label>
+                        <label class="ff-toggle">
+                            <input type="checkbox" id="ff-show-burnrate">
+                            <span class="ff-toggle-swatch" style="background:#16a34a"></span>
+                            Burn Rate
+                        </label>
                     </div>
                 </div>
 
@@ -606,6 +611,7 @@ require __DIR__ . '/../app/partials/header.php';
     var periodSelect    = document.getElementById('ff-period-select');
     var showFulfilledCb = document.getElementById('ff-show-fulfilled');
     var showReceivedCb  = document.getElementById('ff-show-received');
+    var showBurnRateCb  = document.getElementById('ff-show-burnrate');
 
     var chartInstance = null;
     var chartLoaded   = false;
@@ -635,6 +641,9 @@ require __DIR__ . '/../app/partials/header.php';
         if (lastData) renderChart(lastData);
     });
     showReceivedCb.addEventListener('change', function () {
+        if (lastData) renderChart(lastData);
+    });
+    showBurnRateCb.addEventListener('change', function () {
         if (lastData) renderChart(lastData);
     });
 
@@ -676,11 +685,12 @@ require __DIR__ . '/../app/partials/header.php';
         var received  = data.received  || [];
         var showFulfilled = showFulfilledCb.checked;
         var showReceived  = showReceivedCb.checked;
+        var showBurnRate  = showBurnRateCb.checked;
 
         // Use whichever series has entries for labels (they share the same dates)
         var source = fulfilled.length >= received.length ? fulfilled : received;
 
-        if (source.length === 0 || (!showFulfilled && !showReceived)) {
+        if (source.length === 0 || (!showFulfilled && !showReceived && !showBurnRate)) {
             chartArea.classList.add('visible');
             if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
             canvas.style.display = 'none';
@@ -693,7 +703,7 @@ require __DIR__ . '/../app/partials/header.php';
                 emptyEl.className = 'chart-empty';
                 canvas.parentNode.appendChild(emptyEl);
             }
-            emptyEl.textContent = (!showFulfilled && !showReceived)
+            emptyEl.textContent = (!showFulfilled && !showReceived && !showBurnRate)
                 ? 'Enable at least one series to display the chart.'
                 : 'No order data found for this period.';
             emptyEl.style.display = 'block';
@@ -708,6 +718,9 @@ require __DIR__ . '/../app/partials/header.php';
         var labels          = source.map(function (d) { return d.date; });
         var fulfilledCounts = fulfilled.map(function (d) { return d.count; });
         var receivedCounts  = received.map(function (d) { return d.count; });
+        var burnRateCounts  = fulfilledCounts.map(function (v, i) {
+            return (fulfilledCounts[i] || 0) - (receivedCounts[i] || 0);
+        });
         var numDays         = source.length;
         var showDots        = numDays <= 60;
 
@@ -746,6 +759,24 @@ require __DIR__ . '/../app/partials/header.php';
             });
         }
 
+        if (showBurnRate) {
+            datasets.push({
+                label: 'Burn Rate',
+                data: burnRateCounts,
+                borderColor: '#16a34a',
+                backgroundColor: 'rgba(22, 163, 74, 0.06)',
+                borderWidth: 2,
+                borderDash: [6, 3],
+                pointRadius: showDots ? 3 : 0,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#16a34a',
+                fill: false,
+                tension: 0.25,
+                yAxisID: 'yBurn',
+                order: 0,
+            });
+        }
+
         if (chartInstance) {
             chartInstance.destroy();
         }
@@ -772,6 +803,9 @@ require __DIR__ . '/../app/partials/header.php';
                             },
                             label: function (item) {
                                 var n = item.raw;
+                                if (item.dataset.yAxisID === 'yBurn') {
+                                    return item.dataset.label + ': ' + (n > 0 ? '+' : '') + n;
+                                }
                                 return item.dataset.label + ': ' + n + ' order' + (n !== 1 ? 's' : '');
                             },
                         },
@@ -808,6 +842,26 @@ require __DIR__ . '/../app/partials/header.php';
                         },
                         grid: { color: '#f0f0f0' },
                     },
+                    yBurn: {
+                        display: showBurnRate,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Burn Rate (fulfilled − received)',
+                            font: { size: 12, weight: '600' },
+                            color: '#16a34a',
+                        },
+                        ticks: {
+                            stepSize: 1,
+                            color: '#16a34a',
+                            callback: function (v) {
+                                return (v > 0 ? '+' : '') + v;
+                            },
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    },
                 },
             },
         });
@@ -821,6 +875,10 @@ require __DIR__ . '/../app/partials/header.php';
         if (showReceived) {
             var totalR = receivedCounts.reduce(function (a, b) { return a + b; }, 0);
             parts.push(totalR + ' received');
+        }
+        if (showBurnRate) {
+            var netBurn = burnRateCounts.reduce(function (a, b) { return a + b; }, 0);
+            parts.push('net burn ' + (netBurn > 0 ? '+' : '') + netBurn);
         }
         metaEl.textContent = parts.join(', ') +
             ' across ' + numDays + ' day' + (numDays !== 1 ? 's' : '') + '.';
