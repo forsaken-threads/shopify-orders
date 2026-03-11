@@ -168,9 +168,50 @@ require __DIR__ . '/../app/partials/header.php';
         color: #aaa;
     }
 
+    /* ── Series toggles ── */
+    .ff-toggles {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        margin-left: .5rem;
+        padding-bottom: 1px;
+        align-self: flex-end;
+    }
+
+    .ff-toggle {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center;
+        gap: .4rem;
+        font-size: .82rem !important;
+        font-weight: 500 !important;
+        color: #555 !important;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .ff-toggle input[type="checkbox"] {
+        width: .9rem;
+        height: .9rem;
+        margin: 0;
+        cursor: pointer;
+        accent-color: #1a1a2e;
+    }
+
+    .ff-toggle-swatch {
+        display: inline-block;
+        width: .7rem;
+        height: .7rem;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+
     @media (max-width: 700px) {
         .charts-wrap { padding: 1rem; }
         .chart-canvas-wrap { height: 320px; }
+        .ff-toggles { margin-left: 0; margin-top: .25rem; }
     }
 
 </style>
@@ -250,6 +291,77 @@ require __DIR__ . '/../app/partials/header.php';
                         <canvas id="ml-chart-canvas"></canvas>
                     </div>
                     <p class="chart-meta" id="ml-chart-meta"></p>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 2: Fulfillments Per Day ── -->
+        <div class="accordion-card" id="card-fulfillments">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-fulfillments"
+                 onclick="toggleAccordion('card-fulfillments')">
+                <div class="accordion-header-icon">
+                    <!-- line chart icon -->
+                    <svg viewBox="0 0 24 24">
+                        <polyline points="3 17 8 11 13 14 21 5"/>
+                        <line x1="3" y1="21" x2="21" y2="21"/>
+                        <line x1="3" y1="3"  x2="3"  y2="21"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Orders Per Day</h2>
+                    <p>Daily order volume — fulfillments and orders received, with toggleable overlays.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-fulfillments">
+
+                <!-- Filter bar -->
+                <div class="filter-bar" id="ff-filter-bar">
+                    <label>
+                        Period
+                        <select id="ff-period-select">
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                            <option value="90d">Last 90 Days</option>
+                            <option value="ytd">Year to Date</option>
+                            <option value="ttm">Trailing 12 Months</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </label>
+                    <div class="ff-toggles">
+                        <label class="ff-toggle">
+                            <input type="checkbox" id="ff-show-fulfilled" checked>
+                            <span class="ff-toggle-swatch" style="background:#1a1a2e"></span>
+                            Orders Fulfilled
+                        </label>
+                        <label class="ff-toggle">
+                            <input type="checkbox" id="ff-show-received" checked>
+                            <span class="ff-toggle-swatch" style="background:#e67e22"></span>
+                            Orders Received
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div class="chart-loading" id="ff-loading">
+                    <div class="spinner"></div>
+                    Loading chart data…
+                </div>
+
+                <!-- Error -->
+                <div class="chart-error" id="ff-error"></div>
+
+                <!-- Chart -->
+                <div class="chart-area" id="ff-chart-area">
+                    <div class="chart-canvas-wrap">
+                        <canvas id="ff-chart-canvas"></canvas>
+                    </div>
+                    <p class="chart-meta" id="ff-chart-meta"></p>
                 </div>
 
             </div><!-- /accordion-body -->
@@ -480,6 +592,241 @@ require __DIR__ . '/../app/partials/header.php';
         return colors;
     }
 
+}());
+
+// ── Orders Per Day chart (fulfillments + received overlay) ──────────────────
+(function () {
+    'use strict';
+
+    var loadingEl       = document.getElementById('ff-loading');
+    var errorEl         = document.getElementById('ff-error');
+    var chartArea       = document.getElementById('ff-chart-area');
+    var metaEl          = document.getElementById('ff-chart-meta');
+    var canvas          = document.getElementById('ff-chart-canvas');
+    var periodSelect    = document.getElementById('ff-period-select');
+    var showFulfilledCb = document.getElementById('ff-show-fulfilled');
+    var showReceivedCb  = document.getElementById('ff-show-received');
+
+    var chartInstance = null;
+    var chartLoaded   = false;
+    var lastData      = null; // cache for toggle redraws without re-fetching
+
+    // Auto-load chart when accordion first opens
+    var _origToggle2 = window.toggleAccordion;
+    window.toggleAccordion = function (cardId) {
+        _origToggle2(cardId);
+        if (cardId === 'card-fulfillments') {
+            var card = document.getElementById('card-fulfillments');
+            if (card.classList.contains('open') && !chartLoaded) {
+                chartLoaded = true;
+                loadChart();
+            }
+        }
+    };
+
+    // Reload on period change
+    periodSelect.addEventListener('change', function () {
+        chartLoaded = true;
+        loadChart();
+    });
+
+    // Toggle visibility without re-fetching
+    showFulfilledCb.addEventListener('change', function () {
+        if (lastData) renderChart(lastData);
+    });
+    showReceivedCb.addEventListener('change', function () {
+        if (lastData) renderChart(lastData);
+    });
+
+    function showLoading(on) {
+        loadingEl.classList.toggle('visible', on);
+    }
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.toggle('visible', msg !== '');
+    }
+
+    function loadChart() {
+        var period = periodSelect.value;
+        var url = 'api/fulfillments-per-day.php?period=' + encodeURIComponent(period);
+
+        showLoading(true);
+        showError('');
+        chartArea.classList.remove('visible');
+
+        fetch(url)
+            .then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
+                return res.json();
+            })
+            .then(function (data) {
+                showLoading(false);
+                lastData = data;
+                renderChart(data);
+            })
+            .catch(function (err) {
+                showLoading(false);
+                showError('Failed to load chart data: ' + (err.message || 'Unknown error'));
+            });
+    }
+
+    function renderChart(data) {
+        var fulfilled = data.fulfilled || [];
+        var received  = data.received  || [];
+        var showFulfilled = showFulfilledCb.checked;
+        var showReceived  = showReceivedCb.checked;
+
+        // Use whichever series has entries for labels (they share the same dates)
+        var source = fulfilled.length >= received.length ? fulfilled : received;
+
+        if (source.length === 0 || (!showFulfilled && !showReceived)) {
+            chartArea.classList.add('visible');
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            canvas.style.display = 'none';
+            metaEl.textContent = '';
+
+            var emptyEl = document.getElementById('ff-chart-empty');
+            if (!emptyEl) {
+                emptyEl = document.createElement('div');
+                emptyEl.id = 'ff-chart-empty';
+                emptyEl.className = 'chart-empty';
+                canvas.parentNode.appendChild(emptyEl);
+            }
+            emptyEl.textContent = (!showFulfilled && !showReceived)
+                ? 'Enable at least one series to display the chart.'
+                : 'No order data found for this period.';
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        // Hide empty state if previously shown
+        var emptyEl = document.getElementById('ff-chart-empty');
+        if (emptyEl) emptyEl.style.display = 'none';
+        canvas.style.display = '';
+
+        var labels          = source.map(function (d) { return d.date; });
+        var fulfilledCounts = fulfilled.map(function (d) { return d.count; });
+        var receivedCounts  = received.map(function (d) { return d.count; });
+        var numDays         = source.length;
+        var showDots        = numDays <= 60;
+
+        // Build datasets array based on toggle state
+        var datasets = [];
+
+        if (showFulfilled) {
+            datasets.push({
+                label: 'Orders Fulfilled',
+                data: fulfilledCounts,
+                borderColor: '#1a1a2e',
+                backgroundColor: 'rgba(26, 26, 46, 0.08)',
+                borderWidth: 2,
+                pointRadius: showDots ? 3 : 0,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#1a1a2e',
+                fill: true,
+                tension: 0.25,
+                order: 1,
+            });
+        }
+
+        if (showReceived) {
+            datasets.push({
+                label: 'Orders Received',
+                data: receivedCounts,
+                borderColor: '#e67e22',
+                backgroundColor: 'rgba(230, 126, 34, 0.08)',
+                borderWidth: 2,
+                pointRadius: showDots ? 3 : 0,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#e67e22',
+                fill: true,
+                tension: 0.25,
+                order: 2,
+            });
+        }
+
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets,
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function (items) {
+                                return items[0].label;
+                            },
+                            label: function (item) {
+                                var n = item.raw;
+                                return item.dataset.label + ': ' + n + ' order' + (n !== 1 ? 's' : '');
+                            },
+                        },
+                        padding: 10,
+                        boxPadding: 4,
+                    },
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date',
+                            font: { size: 12, weight: '600' },
+                            color: '#444',
+                        },
+                        ticks: {
+                            maxTicksLimit: 15,
+                            maxRotation: 45,
+                            color: '#666',
+                        },
+                        grid: { color: '#f0f0f0' },
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Orders',
+                            font: { size: 12, weight: '600' },
+                            color: '#444',
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            color: '#666',
+                        },
+                        grid: { color: '#f0f0f0' },
+                    },
+                },
+            },
+        });
+
+        // Build meta summary
+        var parts = [];
+        if (showFulfilled) {
+            var totalF = fulfilledCounts.reduce(function (a, b) { return a + b; }, 0);
+            parts.push(totalF + ' fulfilled');
+        }
+        if (showReceived) {
+            var totalR = receivedCounts.reduce(function (a, b) { return a + b; }, 0);
+            parts.push(totalR + ' received');
+        }
+        metaEl.textContent = parts.join(', ') +
+            ' across ' + numDays + ' day' + (numDays !== 1 ? 's' : '') + '.';
+
+        chartArea.classList.add('visible');
+    }
 }());
 </script>
 
