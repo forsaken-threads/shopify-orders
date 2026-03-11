@@ -136,7 +136,7 @@ foreach ($items as $idx => $item) {
 
     // Build the SSH print command
     $mlArg = $ml . 'ml';
-    $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label-' . $mlArg . '.py '
+    $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
 
