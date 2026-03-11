@@ -255,6 +255,65 @@ require __DIR__ . '/../app/partials/header.php';
             </div><!-- /accordion-body -->
         </div><!-- /card -->
 
+        <!-- ── Card 2: Fulfillments Per Day ── -->
+        <div class="accordion-card" id="card-fulfillments">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-fulfillments"
+                 onclick="toggleAccordion('card-fulfillments')">
+                <div class="accordion-header-icon">
+                    <!-- line chart icon -->
+                    <svg viewBox="0 0 24 24">
+                        <polyline points="3 17 8 11 13 14 21 5"/>
+                        <line x1="3" y1="21" x2="21" y2="21"/>
+                        <line x1="3" y1="3"  x2="3"  y2="21"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Fulfillments Per Day</h2>
+                    <p>Daily count of orders fulfilled, based on the Shopify fulfillment date.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-fulfillments">
+
+                <!-- Filter bar -->
+                <div class="filter-bar" id="ff-filter-bar">
+                    <label>
+                        Period
+                        <select id="ff-period-select">
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                            <option value="90d">Last 90 Days</option>
+                            <option value="ytd">Year to Date</option>
+                            <option value="ttm">Trailing 12 Months</option>
+                            <option value="all">All Time</option>
+                        </select>
+                    </label>
+                </div>
+
+                <!-- Loading -->
+                <div class="chart-loading" id="ff-loading">
+                    <div class="spinner"></div>
+                    Loading chart data…
+                </div>
+
+                <!-- Error -->
+                <div class="chart-error" id="ff-error"></div>
+
+                <!-- Chart -->
+                <div class="chart-area" id="ff-chart-area">
+                    <div class="chart-canvas-wrap">
+                        <canvas id="ff-chart-canvas"></canvas>
+                    </div>
+                    <p class="chart-meta" id="ff-chart-meta"></p>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
     </div><!-- /accordion -->
 </div>
 
@@ -480,6 +539,182 @@ require __DIR__ . '/../app/partials/header.php';
         return colors;
     }
 
+}());
+
+// ── Fulfillments Per Day chart ──────────────────────────────────────────────
+(function () {
+    'use strict';
+
+    var loadingEl    = document.getElementById('ff-loading');
+    var errorEl      = document.getElementById('ff-error');
+    var chartArea    = document.getElementById('ff-chart-area');
+    var metaEl       = document.getElementById('ff-chart-meta');
+    var canvas       = document.getElementById('ff-chart-canvas');
+    var periodSelect = document.getElementById('ff-period-select');
+
+    var chartInstance = null;
+    var chartLoaded   = false;
+
+    // Auto-load chart when accordion first opens
+    var _origToggle2 = window.toggleAccordion;
+    window.toggleAccordion = function (cardId) {
+        _origToggle2(cardId);
+        if (cardId === 'card-fulfillments') {
+            var card = document.getElementById('card-fulfillments');
+            if (card.classList.contains('open') && !chartLoaded) {
+                chartLoaded = true;
+                loadChart();
+            }
+        }
+    };
+
+    // Reload on period change
+    periodSelect.addEventListener('change', function () {
+        chartLoaded = true;
+        loadChart();
+    });
+
+    function showLoading(on) {
+        loadingEl.classList.toggle('visible', on);
+    }
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.toggle('visible', msg !== '');
+    }
+
+    function loadChart() {
+        var period = periodSelect.value;
+        var url = 'api/fulfillments-per-day.php?period=' + encodeURIComponent(period);
+
+        showLoading(true);
+        showError('');
+        chartArea.classList.remove('visible');
+
+        fetch(url)
+            .then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
+                return res.json();
+            })
+            .then(function (data) {
+                showLoading(false);
+                renderChart(data);
+            })
+            .catch(function (err) {
+                showLoading(false);
+                showError('Failed to load chart data: ' + (err.message || 'Unknown error'));
+            });
+    }
+
+    function renderChart(data) {
+        var days = data.days;
+
+        if (!days || days.length === 0) {
+            chartArea.classList.add('visible');
+            if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+            canvas.style.display = 'none';
+            metaEl.textContent = '';
+
+            var emptyEl = document.getElementById('ff-chart-empty');
+            if (!emptyEl) {
+                emptyEl = document.createElement('div');
+                emptyEl.id = 'ff-chart-empty';
+                emptyEl.className = 'chart-empty';
+                canvas.parentNode.appendChild(emptyEl);
+            }
+            emptyEl.textContent = 'No fulfilled orders found for this period.';
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        // Hide empty state if previously shown
+        var emptyEl = document.getElementById('ff-chart-empty');
+        if (emptyEl) emptyEl.style.display = 'none';
+        canvas.style.display = '';
+
+        var labels = days.map(function (d) { return d.date; });
+        var counts = days.map(function (d) { return d.count; });
+        var totalOrders = counts.reduce(function (a, b) { return a + b; }, 0);
+
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Orders Fulfilled',
+                    data: counts,
+                    borderColor: '#1a1a2e',
+                    backgroundColor: 'rgba(26, 26, 46, 0.08)',
+                    borderWidth: 2,
+                    pointRadius: days.length <= 60 ? 3 : 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#1a1a2e',
+                    fill: true,
+                    tension: 0.25,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function (items) {
+                                return items[0].label;
+                            },
+                            label: function (item) {
+                                var n = item.raw;
+                                return n + ' order' + (n !== 1 ? 's' : '') + ' fulfilled';
+                            },
+                        },
+                        padding: 10,
+                        boxPadding: 4,
+                    },
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date',
+                            font: { size: 12, weight: '600' },
+                            color: '#444',
+                        },
+                        ticks: {
+                            maxTicksLimit: 15,
+                            maxRotation: 45,
+                            color: '#666',
+                        },
+                        grid: { color: '#f0f0f0' },
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Orders Fulfilled',
+                            font: { size: 12, weight: '600' },
+                            color: '#444',
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            color: '#666',
+                        },
+                        grid: { color: '#f0f0f0' },
+                    },
+                },
+            },
+        });
+
+        metaEl.textContent =
+            totalOrders + ' order' + (totalOrders !== 1 ? 's' : '') +
+            ' fulfilled across ' + days.length + ' day' + (days.length !== 1 ? 's' : '') + '.';
+
+        chartArea.classList.add('visible');
+    }
 }());
 </script>
 
