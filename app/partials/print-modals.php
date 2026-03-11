@@ -455,26 +455,16 @@ var PrintModals = (function () {
         var orderIdx = li.length;
         var orderNum = String(o.order_number || '');
         var itemCount = String(li.length);
-        totalPrintQty += 1;
-        rows += '<tr data-item-index="' + orderIdx + '">' +
-            '<td class="print-retry-col" hidden>' +
-                '<input type="checkbox" class="print-retry-cb" data-index="' + orderIdx + '">' +
-            '</td>' +
-            '<td class="print-status-col" hidden></td>' +
+        rows += '<tr data-item-index="' + orderIdx + '" hidden>' +
             '<td>' +
-                '<input type="text" name="items[' + orderIdx + '][title]" value="' + esc(orderNum) + '" readonly style="background:#f9fafb;color:#6b7280;">' +
+                '<input type="hidden" name="items[' + orderIdx + '][title]" value="' + esc(orderNum) + '">' +
                 '<input type="hidden" name="items[' + orderIdx + '][full_title]" value="' + esc(orderNum) + '">' +
                 '<input type="hidden" name="items[' + orderIdx + '][shopify_product_id]" value="">' +
                 '<input type="hidden" name="items[' + orderIdx + '][ml]" value="order">' +
                 '<input type="hidden" name="items[' + orderIdx + '][preferred_title]" value="">' +
-            '</td>' +
-            '<td>' +
-                '<input type="text" name="items[' + orderIdx + '][custom_brand]" value="' + esc(itemCount) + '" readonly style="background:#f9fafb;color:#6b7280;">' +
+                '<input type="hidden" name="items[' + orderIdx + '][custom_brand]" value="' + esc(itemCount) + '">' +
                 '<input type="hidden" name="items[' + orderIdx + '][original_brand]" value="' + esc(itemCount) + '">' +
                 '<input type="hidden" name="items[' + orderIdx + '][preferred_brand]" value="">' +
-            '</td>' +
-            '<td>Order</td>' +
-            '<td class="qty">1' +
                 '<input type="hidden" name="items[' + orderIdx + '][quantity]" value="1">' +
             '</td>' +
             '</tr>';
