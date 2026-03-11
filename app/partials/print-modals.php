@@ -451,6 +451,24 @@ var PrintModals = (function () {
                 '</tr>';
         }).join('');
 
+        // Append an order summary label as the final item
+        var orderIdx = li.length;
+        var orderNum = String(o.order_number || '');
+        var itemCount = String(li.length);
+        rows += '<tr data-item-index="' + orderIdx + '" hidden>' +
+            '<td>' +
+                '<input type="hidden" name="items[' + orderIdx + '][title]" value="' + esc(orderNum) + '">' +
+                '<input type="hidden" name="items[' + orderIdx + '][full_title]" value="' + esc(orderNum) + '">' +
+                '<input type="hidden" name="items[' + orderIdx + '][shopify_product_id]" value="">' +
+                '<input type="hidden" name="items[' + orderIdx + '][ml]" value="order">' +
+                '<input type="hidden" name="items[' + orderIdx + '][preferred_title]" value="">' +
+                '<input type="hidden" name="items[' + orderIdx + '][custom_brand]" value="' + esc(itemCount) + '">' +
+                '<input type="hidden" name="items[' + orderIdx + '][original_brand]" value="' + esc(itemCount) + '">' +
+                '<input type="hidden" name="items[' + orderIdx + '][preferred_brand]" value="">' +
+                '<input type="hidden" name="items[' + orderIdx + '][quantity]" value="1">' +
+            '</td>' +
+            '</tr>';
+
         return '<form id="print-form">' +
             '<input type="hidden" name="order_id" value="' + esc(String(o.id)) + '">' +
             '<table><thead><tr>' +
