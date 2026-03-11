@@ -74,18 +74,14 @@ $db = getDb($config);
 // We use SQLite's json_extract() to pull the first fulfillment's created_at,
 // then group by date.
 
-$whereClauses = ["o.status = 'fulfilled'"];
-$params = [];
+$dateParam = $dateMin !== null ? [':date_min' => $dateMin] : [];
 
+// Fulfillments per day
+$fulfilledWhere = "o.status = 'fulfilled'";
 if ($dateMin !== null) {
-    $whereClauses[] = 'o.shopify_created_at >= :date_min';
-    $params[':date_min'] = $dateMin;
+    $fulfilledWhere .= ' AND o.shopify_created_at >= :date_min';
 }
 
-$where = implode(' AND ', $whereClauses);
-
-// Extract the fulfillment date from raw_data JSON. Fall back to shopify_created_at
-// if the fulfillments array is missing or empty.
 $sql = "
     SELECT
         DATE(
@@ -93,29 +89,59 @@ $sql = "
                 json_extract(o.raw_data, '$.fulfillments[0].created_at'),
                 o.shopify_created_at
             )
-        ) AS fulfillment_date,
+        ) AS the_date,
         COUNT(*) AS order_count
     FROM orders o
-    WHERE {$where}
-    GROUP BY fulfillment_date
-    ORDER BY fulfillment_date ASC
+    WHERE {$fulfilledWhere}
+    GROUP BY the_date
+    ORDER BY the_date ASC
 ";
 
 $stmt = $db->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
+$stmt->execute($dateParam);
+$fulfilledRows = $stmt->fetchAll();
+
+// Orders received per day (all statuses)
+$receivedWhere = '1=1';
+if ($dateMin !== null) {
+    $receivedWhere = 'o.shopify_created_at >= :date_min';
+}
+
+$sql = "
+    SELECT
+        DATE(o.shopify_created_at) AS the_date,
+        COUNT(*) AS order_count
+    FROM orders o
+    WHERE {$receivedWhere}
+    GROUP BY the_date
+    ORDER BY the_date ASC
+";
+
+$stmt = $db->prepare($sql);
+$stmt->execute($dateParam);
+$receivedRows = $stmt->fetchAll();
+
+// Build lookup maps
+$fulfilledLookup = [];
+foreach ($fulfilledRows as $row) {
+    $fulfilledLookup[$row['the_date']] = (int) $row['order_count'];
+}
+$receivedLookup = [];
+foreach ($receivedRows as $row) {
+    $receivedLookup[$row['the_date']] = (int) $row['order_count'];
+}
+
+// Merge all dates from both series
+$allDates = array_unique(array_merge(
+    array_keys($fulfilledLookup),
+    array_keys($receivedLookup)
+));
 
 // If a date range was specified, fill in zero-count days for a continuous line.
-$days = [];
+$fulfilledDays = [];
+$receivedDays  = [];
 
-if ($dateMin !== null && count($rows) > 0) {
-    // Build a lookup map of date => count
-    $lookup = [];
-    foreach ($rows as $row) {
-        $lookup[$row['fulfillment_date']] = (int) $row['order_count'];
-    }
-
-    // Generate every date from dateMin to today
+if ($dateMin !== null && count($allDates) > 0) {
     $start = new DateTime(substr($dateMin, 0, 10));
     $end   = new DateTime('today');
     $end->modify('+1 day'); // include today
@@ -125,22 +151,20 @@ if ($dateMin !== null && count($rows) > 0) {
 
     foreach ($range as $dt) {
         $d = $dt->format('Y-m-d');
-        $days[] = [
-            'date'  => $d,
-            'count' => $lookup[$d] ?? 0,
-        ];
+        $fulfilledDays[] = ['date' => $d, 'count' => $fulfilledLookup[$d] ?? 0];
+        $receivedDays[]  = ['date' => $d, 'count' => $receivedLookup[$d] ?? 0];
     }
 } else {
-    // "all" period — only return days that have data
-    foreach ($rows as $row) {
-        $days[] = [
-            'date'  => $row['fulfillment_date'],
-            'count' => (int) $row['order_count'],
-        ];
+    // "all" period — only return days that have data in either series
+    sort($allDates);
+    foreach ($allDates as $d) {
+        $fulfilledDays[] = ['date' => $d, 'count' => $fulfilledLookup[$d] ?? 0];
+        $receivedDays[]  = ['date' => $d, 'count' => $receivedLookup[$d] ?? 0];
     }
 }
 
 echo json_encode([
-    'period' => $period,
-    'days'   => $days,
+    'period'    => $period,
+    'fulfilled' => $fulfilledDays,
+    'received'  => $receivedDays,
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
