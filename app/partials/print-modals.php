@@ -398,6 +398,7 @@ var PrintModals = (function () {
     var oneoffCloseBtn = document.getElementById('oneoff-modal-close');
 
     var activePrintId  = null;
+    var activePrintForce = false;
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -507,6 +508,7 @@ var PrintModals = (function () {
             var confirmData = new FormData();
             confirmData.append('order_id', orderId);
             confirmData.append('action', 'confirm');
+            if (activePrintForce) confirmData.append('force', '1');
 
             fetch('api/print-order.php', {
                 method: 'POST',
@@ -592,6 +594,7 @@ var PrintModals = (function () {
                 var confirmData = new FormData();
                 confirmData.append('order_id', orderId);
                 confirmData.append('action', 'confirm');
+                if (activePrintForce) confirmData.append('force', '1');
 
                 fetch('api/print-order.php', {
                     method: 'POST',
@@ -633,6 +636,7 @@ var PrintModals = (function () {
         var formData = new FormData();
         formData.append('order_id', orderId);
         formData.append('action', 'print');
+        if (activePrintForce) formData.append('force', '1');
 
         var rows = form.querySelectorAll('tr[data-item-index]');
         var sendIndex = 0;
@@ -705,8 +709,9 @@ var PrintModals = (function () {
     var _onPrintConfirm = null;
     var _detailCache = null;
 
-    function openPrintModal(orderId, orderNumber, detailCache) {
+    function openPrintModal(orderId, orderNumber, detailCache, opts) {
         activePrintId = orderId;
+        activePrintForce = !!(opts && opts.force);
         _detailCache = detailCache || {};
         printTitle.textContent = 'Print Labels — Order ' + orderNumber;
         printBody.innerHTML = '';

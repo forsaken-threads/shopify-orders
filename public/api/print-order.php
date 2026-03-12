@@ -66,8 +66,13 @@ $db = getDb($config);
 
 $action = trim((string) ($_POST['action'] ?? 'print'));
 
+$force = (bool) ($_POST['force'] ?? false);
+
 if ($action === 'oneoff') {
     // One-off prints work on any order status and never change it.
+    $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
+} elseif ($force) {
+    // Force flag allows reprinting orders that are already printed.
     $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
 } else {
     // Regular print/confirm requires pending or fulfilled status.

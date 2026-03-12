@@ -207,11 +207,12 @@ require __DIR__ . '/../app/partials/header.php';
         <h1>Order <?= h($order['order_number']) ?></h1>
         <?= statusBadgeOrder($order['status']) ?>
         <div class="order-page-actions">
-            <?php if ($order['status'] === 'pending' || $order['status'] === 'fulfilled'): ?>
+            <?php if (in_array($order['status'], ['pending', 'fulfilled', 'printed'], true)): ?>
             <button class="btn-print" id="order-print-btn"
                     data-id="<?= $id ?>"
-                    data-order-number="<?= h($order['order_number']) ?>">
-                Print
+                    data-order-number="<?= h($order['order_number']) ?>"
+                    <?php if ($order['status'] === 'printed'): ?>data-force="1"<?php endif; ?>>
+                <?= $order['status'] === 'printed' ? 'Reprint' : 'Print' ?>
             </button>
             <?php endif; ?>
         </div>
@@ -336,7 +337,8 @@ require __DIR__ . '/../app/partials/header.php';
     var printBtn = document.getElementById('order-print-btn');
     if (printBtn) {
         printBtn.addEventListener('click', function () {
-            PrintModals.openPrintModal(printBtn.dataset.id, printBtn.dataset.orderNumber, {});
+            var opts = printBtn.dataset.force ? { force: true } : null;
+            PrintModals.openPrintModal(printBtn.dataset.id, printBtn.dataset.orderNumber, {}, opts);
         });
     }
 }());
