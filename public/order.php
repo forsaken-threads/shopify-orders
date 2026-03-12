@@ -193,6 +193,11 @@ require __DIR__ . '/../app/partials/header.php';
 
 .line-items-card tbody tr:last-child td { border-bottom: none; }
 .line-items-card tbody tr:hover td { background: #fafafa; }
+
+.line-items-card tfoot td {
+    border-top: 2px solid #e5e7eb;
+    background: #f9fafb;
+}
 </style>
 
 <div class="order-page-main">
@@ -260,9 +265,14 @@ require __DIR__ . '/../app/partials/header.php';
                 </tr>
             </thead>
             <tbody>
+            <?php
+                $totalItems  = count($lineItems);
+                $totalLabels = 0;
+            ?>
             <?php foreach ($lineItems as $item):
                 $unitPrice = (float) $item['price'];
                 $qty       = (int) $item['quantity'];
+                $totalLabels += $qty;
                 $ml        = $item['variant_ml'] !== null ? (int) $item['variant_ml'] : null;
                 $brand     = $item['custom_brand'] ?? '';
                 $preferredTitle = $item['preferred_title'] ?? null;
@@ -299,6 +309,17 @@ require __DIR__ . '/../app/partials/header.php';
                 </tr>
             <?php endforeach; ?>
             </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="6" style="text-align:right;font-weight:600;font-size:.8rem;color:#6b7280;padding:.75rem;">
+                        <?= $totalItems ?> item<?= $totalItems !== 1 ? 's' : '' ?> · <?= $totalLabels ?> label<?= $totalLabels !== 1 ? 's' : '' ?>
+                    </td>
+                    <td class="qty" style="font-weight:700;"><?= $totalLabels ?></td>
+                    <td></td>
+                    <td></td>
+                    <?php if ($order['status'] !== 'pending'): ?><td></td><?php endif; ?>
+                </tr>
+            </tfoot>
         </table>
     </div>
     <?php endif; ?>
