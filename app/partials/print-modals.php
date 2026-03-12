@@ -878,16 +878,16 @@ var PrintModals = (function () {
 
     // ── Wire close buttons and backdrop clicks ────────────────────────────
 
+    // Print modal: only close via the × button or Cancel/Confirm actions.
+    // No backdrop click or Escape key — prevents accidental closure while editing.
     if (printCloseBtn) printCloseBtn.addEventListener('click', closePrintModal);
-    printModal.addEventListener('click', function (e) { if (e.target === printModal) closePrintModal(); });
 
     if (oneoffCloseBtn) oneoffCloseBtn.addEventListener('click', closeOneoffModal);
     oneoffModal.addEventListener('click', function (e) { if (e.target === oneoffModal) closeOneoffModal(); });
 
-    // Escape key handling
+    // Escape key closes only the oneoff modal, not the full print modal
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !oneoffModal.hidden) { closeOneoffModal(); return; }
-        if (e.key === 'Escape' && !printModal.hidden) { closePrintModal(); return; }
     });
 
     // ── Wire up one-off print buttons in a container ──────────────────────
