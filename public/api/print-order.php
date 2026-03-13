@@ -66,7 +66,8 @@ $db = getDb($config);
 
 $action = trim((string) ($_POST['action'] ?? 'print'));
 
-$force = (bool) ($_POST['force'] ?? false);
+$force       = (bool) ($_POST['force'] ?? false);
+$skipPersist = (bool) ($_POST['skip_persist'] ?? false);  // global flag for one-off prints
 
 if ($action === 'oneoff') {
     // One-off prints work on any order status and never change it.
@@ -177,7 +178,10 @@ foreach ($items as $idx => $item) {
 
     // Update preferred title/brand in products table if the submitted values
     // differ from the current preferences.
-    if (!$isOrderLabel && $productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
+    // For full-order prints, each item has its own save_edits flag (checked = persist).
+    // For one-off prints, the global skip_persist flag is used.
+    $itemSaveEdits = $action === 'oneoff' ? !$skipPersist : !empty($item['save_edits']);
+    if ($itemSaveEdits && !$isOrderLabel && $productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
         $prefUpdateStmt->execute([$title, $brand, $productId]);
     }
 }

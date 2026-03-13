@@ -208,6 +208,33 @@
     font-size: .85rem;
 }
 
+.skip-persist-label {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .8rem;
+    color: var(--text-muted, #6b7280);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.skip-persist-cb {
+    width: .9rem;
+    height: .9rem;
+    cursor: pointer;
+    accent-color: #4f46e5;
+}
+
+.skip-persist-col { width: 3rem; text-align: center; white-space: nowrap; }
+
+.skip-persist-item-cb {
+    width: .9rem;
+    height: .9rem;
+    cursor: pointer;
+    accent-color: #4f46e5;
+}
+
 /* ── Print review stage: retry checkboxes & status indicators ──────────── */
 .print-retry-col { width: 2rem; text-align: center; }
 .print-status-col { width: 4.5rem; text-align: center; white-space: nowrap; }
@@ -449,6 +476,9 @@ var PrintModals = (function () {
                 '<td class="qty">' + qty +
                     '<input type="hidden" name="items[' + i + '][quantity]" value="' + qty + '">' +
                 '</td>' +
+                '<td class="skip-persist-col">' +
+                    '<input type="checkbox" class="skip-persist-item-cb" name="items[' + i + '][save_edits]" value="1" checked>' +
+                '</td>' +
                 '</tr>';
         }).join('');
 
@@ -475,7 +505,7 @@ var PrintModals = (function () {
             '<table><thead><tr>' +
             '<th class="print-retry-col" hidden><input type="checkbox" class="print-retry-cb print-check-all" title="Check all"></th>' +
             '<th class="print-status-col" hidden></th>' +
-            '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th>' +
+            '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th><th class="skip-persist-col">Save</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
             '<span class="print-total-qty">Total labels: <strong>' + totalPrintQty + '</strong></span>' +
@@ -695,10 +725,15 @@ var PrintModals = (function () {
                 var cb = row.querySelector('.print-retry-cb');
                 if (!cb || !cb.checked) return;
             }
-            row.querySelectorAll('input[name^="items[' + idx + ']"]').forEach(function (input) {
+            row.querySelectorAll('input[name^="items[' + idx + ']"]:not(.skip-persist-item-cb)').forEach(function (input) {
                 var name = input.name.replace('items[' + idx + ']', 'items[' + sendIndex + ']');
                 formData.append(name, input.value);
             });
+            // Per-item save_edits: checkbox checked means persist, unchecked means skip
+            var saveCb = row.querySelector('.skip-persist-item-cb');
+            if (saveCb && saveCb.checked) {
+                formData.append('items[' + sendIndex + '][save_edits]', '1');
+            }
             formData.append('_row_map[' + sendIndex + ']', idx);
             sendIndex++;
         });
@@ -851,6 +886,10 @@ var PrintModals = (function () {
                 '</div>' +
             '</div>' +
             '<div class="oneoff-modal-footer">' +
+                '<label class="skip-persist-label">' +
+                    '<input type="checkbox" id="oneoff-skip-persist" name="skip_persist" class="skip-persist-cb">' +
+                    ' Don\'t save edits' +
+                '</label>' +
                 '<span class="print-error" id="oneoff-error"></span>' +
                 '<button type="button" class="btn-oneoff-cancel" id="oneoff-cancel-btn">Cancel</button>' +
                 '<button type="submit" class="btn-oneoff-submit" id="oneoff-submit-btn">Print</button>' +
@@ -895,6 +934,9 @@ var PrintModals = (function () {
         formData.append('items[0][preferred_title]', form.querySelector('[name="preferred_title"]').value);
         formData.append('items[0][preferred_brand]', form.querySelector('[name="preferred_brand"]').value);
         formData.append('items[0][quantity]', '1');
+        if (form.querySelector('[name="skip_persist"]').checked) {
+            formData.append('skip_persist', '1');
+        }
 
         fetch('api/print-order.php', {
             method: 'POST',
