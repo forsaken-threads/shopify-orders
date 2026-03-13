@@ -311,7 +311,7 @@ $authUrl = sprintf(
     'https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s',
     $shopDomain,
     rawurlencode($apiKey),
-    rawurlencode('read_products,read_orders,write_online_store'),
+    rawurlencode('read_products,read_orders'),
     rawurlencode($callbackUrl)
 );
 
