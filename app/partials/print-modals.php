@@ -473,7 +473,7 @@ var PrintModals = (function () {
         return '<form id="print-form">' +
             '<input type="hidden" name="order_id" value="' + esc(String(o.id)) + '">' +
             '<table><thead><tr>' +
-            '<th class="print-retry-col" hidden></th>' +
+            '<th class="print-retry-col" hidden><input type="checkbox" class="print-retry-cb print-check-all" title="Check all"></th>' +
             '<th class="print-status-col" hidden></th>' +
             '<th>Product Title</th><th>Brand</th><th>ML</th><th>Qty</th>' +
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
@@ -555,9 +555,10 @@ var PrintModals = (function () {
             }
         });
 
-        form.querySelectorAll('.print-retry-cb').forEach(function (cb) {
+        form.querySelectorAll('.print-retry-cb:not(.print-check-all)').forEach(function (cb) {
             cb.addEventListener('change', updatePrintButton);
         });
+        wireCheckAll(form);
 
         updatePrintButton();
     }
@@ -567,9 +568,57 @@ var PrintModals = (function () {
         var submitBtn = document.getElementById('print-submit-btn');
         if (!form || !submitBtn) return;
 
-        var anyChecked = form.querySelector('.print-retry-cb:checked');
+        var anyChecked = form.querySelector('.print-retry-cb:checked:not(.print-check-all)');
         submitBtn.textContent = anyChecked ? 'Retry' : 'Confirm';
         submitBtn.disabled = false;
+
+        // Sync "Check All" state
+        var checkAll = form.querySelector('.print-check-all');
+        if (checkAll) {
+            var allCbs = form.querySelectorAll('.print-retry-cb:not(.print-check-all)');
+            var allChecked = allCbs.length > 0 && Array.prototype.every.call(allCbs, function (cb) { return cb.checked; });
+            checkAll.checked = allChecked;
+        }
+    }
+
+    function wireCheckAll(form) {
+        var checkAll = form.querySelector('.print-check-all');
+        if (!checkAll) return;
+        checkAll.addEventListener('change', function () {
+            var checked = checkAll.checked;
+            form.querySelectorAll('.print-retry-cb:not(.print-check-all)').forEach(function (cb) {
+                cb.checked = checked;
+            });
+            updatePrintButton();
+        });
+    }
+
+    function enterNetworkRetryMode() {
+        var form = document.getElementById('print-form');
+        if (!form) return;
+
+        // Show retry & status columns
+        form.querySelectorAll('.print-retry-col, .print-status-col').forEach(function (el) {
+            el.hidden = false;
+        });
+
+        // Mark every visible row as unknown — no boxes checked
+        form.querySelectorAll('tr[data-item-index]:not([hidden])').forEach(function (row) {
+            var statusCell = row.querySelector('.print-status-col');
+            var cb = row.querySelector('.print-retry-cb');
+            row.classList.remove('print-row-error', 'print-row-ok');
+            row.classList.add('print-row-error');
+            if (statusCell) statusCell.innerHTML = '<span class="label-fail">?</span>';
+            if (cb) cb.checked = false;
+        });
+
+        // Wire checkbox listeners
+        form.querySelectorAll('.print-retry-cb:not(.print-check-all)').forEach(function (cb) {
+            cb.addEventListener('change', updatePrintButton);
+        });
+        wireCheckAll(form);
+
+        updatePrintButton();
     }
 
     // ── Print form submit handler ─────────────────────────────────────────
@@ -584,7 +633,7 @@ var PrintModals = (function () {
         var inReview = !form.querySelector('.print-retry-col').hidden;
 
         if (inReview) {
-            var anyChecked = form.querySelector('.print-retry-cb:checked');
+            var anyChecked = form.querySelector('.print-retry-cb:checked:not(.print-check-all)');
 
             if (!anyChecked) {
                 submitBtn.disabled = true;
@@ -698,9 +747,13 @@ var PrintModals = (function () {
             }
         })
         .catch(function () {
-            errorEl.textContent = 'Network error — please try again.';
-            submitBtn.disabled = false;
-            submitBtn.textContent = inReview ? 'Retry' : 'Print Labels';
+            errorEl.textContent = 'Network error — select the labels you need to reprint.';
+            if (!inReview) {
+                enterNetworkRetryMode();
+            } else {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Retry';
+            }
         });
     }
 
