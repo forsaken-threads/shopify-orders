@@ -208,6 +208,24 @@
     font-size: .85rem;
 }
 
+.skip-persist-label {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .8rem;
+    color: var(--text-muted, #6b7280);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.skip-persist-cb {
+    width: .9rem;
+    height: .9rem;
+    cursor: pointer;
+    accent-color: #4f46e5;
+}
+
 /* ── Print review stage: retry checkboxes & status indicators ──────────── */
 .print-retry-col { width: 2rem; text-align: center; }
 .print-status-col { width: 4.5rem; text-align: center; white-space: nowrap; }
@@ -479,6 +497,10 @@ var PrintModals = (function () {
             '</tr></thead><tbody>' + rows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
             '<span class="print-total-qty">Total labels: <strong>' + totalPrintQty + '</strong></span>' +
+            '<label class="skip-persist-label">' +
+                '<input type="checkbox" id="print-skip-persist" name="skip_persist" class="skip-persist-cb">' +
+                ' Don\'t save edits' +
+            '</label>' +
             '<span class="print-error" id="print-error"></span>' +
             '<button type="button" class="btn-print-cancel" id="print-cancel-btn">Cancel</button>' +
             '<button type="submit" class="btn-print-submit" id="print-submit-btn">Print Labels</button>' +
@@ -686,6 +708,8 @@ var PrintModals = (function () {
         formData.append('order_id', orderId);
         formData.append('action', 'print');
         if (activePrintForce) formData.append('force', '1');
+        var skipPersistCb = form.querySelector('[name="skip_persist"]');
+        if (skipPersistCb && skipPersistCb.checked) formData.append('skip_persist', '1');
 
         var rows = form.querySelectorAll('tr[data-item-index]');
         var sendIndex = 0;
@@ -851,6 +875,10 @@ var PrintModals = (function () {
                 '</div>' +
             '</div>' +
             '<div class="oneoff-modal-footer">' +
+                '<label class="skip-persist-label">' +
+                    '<input type="checkbox" id="oneoff-skip-persist" name="skip_persist" class="skip-persist-cb">' +
+                    ' Don\'t save edits' +
+                '</label>' +
                 '<span class="print-error" id="oneoff-error"></span>' +
                 '<button type="button" class="btn-oneoff-cancel" id="oneoff-cancel-btn">Cancel</button>' +
                 '<button type="submit" class="btn-oneoff-submit" id="oneoff-submit-btn">Print</button>' +
@@ -895,6 +923,9 @@ var PrintModals = (function () {
         formData.append('items[0][preferred_title]', form.querySelector('[name="preferred_title"]').value);
         formData.append('items[0][preferred_brand]', form.querySelector('[name="preferred_brand"]').value);
         formData.append('items[0][quantity]', '1');
+        if (form.querySelector('[name="skip_persist"]').checked) {
+            formData.append('skip_persist', '1');
+        }
 
         fetch('api/print-order.php', {
             method: 'POST',
