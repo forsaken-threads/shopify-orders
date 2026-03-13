@@ -13,3 +13,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Monthly full product sync with reconciliation — 1st of the month, 4:00 AM
 0 4 1 * *   redrover   /home/redrover/environments/php84/src/utility/do php scripts/sync-products.php --all-products >> /home/redrover/environments/php84/src/utility/logs/sync-products-full.log 2>&1
+
+# Enable storefront password protection — Thursdays at 9:00 AM
+0 9 * * 4   redrover   /home/redrover/environments/php84/src/utility/do php scripts/toggle-password-protection.php enable >> /home/redrover/environments/php84/src/utility/logs/toggle-password-protection.log 2>&1
+
+# Disable storefront password protection — Fridays at 9:00 AM
+0 9 * * 5   redrover   /home/redrover/environments/php84/src/utility/do php scripts/toggle-password-protection.php disable >> /home/redrover/environments/php84/src/utility/logs/toggle-password-protection.log 2>&1
