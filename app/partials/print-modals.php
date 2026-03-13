@@ -485,7 +485,7 @@ var PrintModals = (function () {
         // Append an order summary label as the final item
         var orderIdx = li.length;
         var orderNum = String(o.order_number || '');
-        var itemCount = String(li.length);
+        var itemCount = String(totalPrintQty);
         rows += '<tr data-item-index="' + orderIdx + '" hidden>' +
             '<td>' +
                 '<input type="hidden" name="items[' + orderIdx + '][title]" value="' + esc(orderNum) + '">' +
