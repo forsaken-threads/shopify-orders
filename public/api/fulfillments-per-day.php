@@ -69,10 +69,16 @@ switch ($period) {
 
 $db = getDb($config);
 
-// ── Query fulfilled orders and extract fulfillment date from raw_data ────────
+// ── Timezone for date grouping ───────────────────────────────────────────────
+// Shopify timestamps are UTC. Convert to Eastern (America/New_York handles
+// EST/EDT automatically) before grouping by date so that orders are counted
+// on the correct local day.
+$tz = new DateTimeZone('America/New_York');
+
+// ── Query fulfilled orders and extract fulfillment timestamp from raw_data ───
 // Shopify stores fulfillments in raw_data -> fulfillments[0].created_at.
-// We use SQLite's json_extract() to pull the first fulfillment's created_at,
-// then group by date.
+// We fetch individual timestamps and group by date in PHP after timezone
+// conversion, since SQLite has no native timezone support.
 
 $dateParam = $dateMin !== null ? [':date_min' => $dateMin] : [];
 
@@ -84,17 +90,13 @@ if ($dateMin !== null) {
 
 $sql = "
     SELECT
-        DATE(
-            COALESCE(
-                json_extract(o.raw_data, '$.fulfillments[0].created_at'),
-                o.shopify_created_at
-            )
-        ) AS the_date,
-        COUNT(*) AS order_count
+        COALESCE(
+            json_extract(o.raw_data, '$.fulfillments[0].created_at'),
+            o.shopify_created_at
+        ) AS ts
     FROM orders o
     WHERE {$fulfilledWhere}
-    GROUP BY the_date
-    ORDER BY the_date ASC
+    ORDER BY ts ASC
 ";
 
 $stmt = $db->prepare($sql);
@@ -108,28 +110,30 @@ if ($dateMin !== null) {
 }
 
 $sql = "
-    SELECT
-        DATE(o.shopify_created_at) AS the_date,
-        COUNT(*) AS order_count
+    SELECT o.shopify_created_at AS ts
     FROM orders o
     WHERE {$receivedWhere}
-    GROUP BY the_date
-    ORDER BY the_date ASC
+    ORDER BY ts ASC
 ";
 
 $stmt = $db->prepare($sql);
 $stmt->execute($dateParam);
 $receivedRows = $stmt->fetchAll();
 
-// Build lookup maps
-$fulfilledLookup = [];
-foreach ($fulfilledRows as $row) {
-    $fulfilledLookup[$row['the_date']] = (int) $row['order_count'];
+// Group by date after converting each timestamp to Eastern time
+function groupByLocalDate(array $rows, DateTimeZone $tz): array {
+    $counts = [];
+    foreach ($rows as $row) {
+        $dt = new DateTime($row['ts']);
+        $dt->setTimezone($tz);
+        $date = $dt->format('Y-m-d');
+        $counts[$date] = ($counts[$date] ?? 0) + 1;
+    }
+    return $counts;
 }
-$receivedLookup = [];
-foreach ($receivedRows as $row) {
-    $receivedLookup[$row['the_date']] = (int) $row['order_count'];
-}
+
+$fulfilledLookup = groupByLocalDate($fulfilledRows, $tz);
+$receivedLookup  = groupByLocalDate($receivedRows, $tz);
 
 // Merge all dates from both series
 $allDates = array_unique(array_merge(
