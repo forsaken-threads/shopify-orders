@@ -63,7 +63,7 @@ if (!is_array($order) || empty($order['id'])) {
 // refund attribution (order.refunds[].refund_line_items[]) is not applied to
 // revenue figures — refunds are rare and the data is still useful for reporting.
 
-const ACCEPTED_FINANCIAL_STATUSES = ['paid', 'partially_refunded', 'refunded'];
+const ACCEPTED_FINANCIAL_STATUSES = ['paid', 'partially_paid', 'partially_refunded', 'refunded'];
 
 if ($topic !== 'orders/fulfilled') {
     $financialStatus = $order['financial_status'] ?? '';
