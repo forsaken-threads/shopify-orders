@@ -680,6 +680,14 @@ require __DIR__ . '/../app/partials/header.php';
             });
     }
 
+    var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+    function formatDateLabel(dateStr) {
+        var parts = dateStr.split('-');
+        var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10) - 1, parseInt(parts[2],10));
+        return dayNames[d.getDay()] + ' ' + (d.getMonth() + 1) + '/' + d.getDate();
+    }
+
     function renderChart(data) {
         var fulfilled = data.fulfilled || [];
         var received  = data.received  || [];
@@ -715,7 +723,7 @@ require __DIR__ . '/../app/partials/header.php';
         if (emptyEl) emptyEl.style.display = 'none';
         canvas.style.display = '';
 
-        var labels          = source.map(function (d) { return d.date; });
+        var labels          = source.map(function (d) { return formatDateLabel(d.date); });
         var fulfilledCounts = fulfilled.map(function (d) { return d.count; });
         var receivedCounts  = received.map(function (d) { return d.count; });
         var burnRateCounts  = fulfilledCounts.map(function (v, i) {
