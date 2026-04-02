@@ -118,6 +118,7 @@ $labelEntries  = '';
 $validMlSizes  = ['1', '5', '10'];
 $timestamp     = date('Y-m-d H:i:s');
 $results       = [];   // per-item status to return to the frontend
+$maxRetries    = 2;     // retry transient SSH failures up to 2 times
 
 $prefUpdateStmt = $db->prepare(
     "UPDATE products SET preferred_title = ?, preferred_brand = ? WHERE shopify_product_id = ?"
@@ -142,28 +143,59 @@ foreach ($items as $idx => $item) {
 
     $qty = max(1, (int) ($item['quantity'] ?? 1));
 
-    // Build the SSH print command
+    // Build the SSH print command with timeouts to prevent indefinite hangs.
+    // ConnectTimeout: fail fast if the printer host is unreachable.
+    // ServerAliveInterval/CountMax: detect a stalled connection within 15s.
     $mlArg = $isOrderLabel ? 'Order' : $ml . 'ml';
     $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
-    $cmd = 'ssh keith@percival.spartang.com ' . escapeshellarg($remoteCmd);
+    $sshOpts = '-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
+    $cmd = "ssh {$sshOpts} keith@percival.spartang.com " . escapeshellarg($remoteCmd);
 
-    // Execute for each copy (quantity) — track per-item success
+    // Execute for each copy (quantity) — track per-item success.
+    // Transient SSH failures (exit codes 255, 1) are retried up to $maxRetries times.
     $itemFailed = false;
     $itemError  = '';
     for ($q = 0; $q < $qty; $q++) {
-        $cmdOutput = [];
-        $cmdResult = 0;
-        exec($cmd . ' 2>&1', $cmdOutput, $cmdResult);
-        $outputStr = implode("\n", $cmdOutput);
-        if ($cmdResult !== 0) {
-            $logLine = "[{$timestamp}] exit:{$cmdResult} | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\ncmd: {$cmd}\n{$outputStr}\n---\n";
+        $attempt    = 0;
+        $printed    = false;
+        $outputStr  = '';
+        $cmdResult  = 0;
+        while ($attempt <= $maxRetries) {
+            $cmdOutput = [];
+            $cmdResult = 0;
+            $t0 = microtime(true);
+            exec($cmd . ' 2>&1', $cmdOutput, $cmdResult);
+            $elapsed = round(microtime(true) - $t0, 2);
+            $outputStr = implode("\n", $cmdOutput);
+
+            if ($cmdResult === 0) {
+                $logLine = "[{$timestamp}] exit:0 | {$elapsed}s | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
+                file_put_contents($logDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
+                $printed = true;
+                break;
+            }
+
+            // Log every failed attempt
+            $retryLabel = $attempt < $maxRetries ? " (attempt " . ($attempt + 1) . "/{$maxRetries}, will retry)" : " (final attempt)";
+            $logLine = "[{$timestamp}] exit:{$cmdResult} | {$elapsed}s | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}{$retryLabel}\ncmd: {$cmd}\n{$outputStr}\n---\n";
             file_put_contents($logDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
+
+            // Only retry on SSH transport errors (255) or general errors (1) that
+            // suggest a transient connection issue rather than a print-service bug.
+            if ($cmdResult !== 255 && $cmdResult !== 1) {
+                break;
+            }
+
+            $attempt++;
+            if ($attempt <= $maxRetries) {
+                sleep($attempt); // 1s then 2s backoff
+            }
+        }
+
+        if (!$printed) {
             $itemFailed = true;
             $itemError  = $outputStr;
-        } else {
-            $logLine = "[{$timestamp}] exit:0 | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
-            file_put_contents($logDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
         }
     }
 
