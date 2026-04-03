@@ -178,6 +178,48 @@ require __DIR__ . '/../app/partials/header.php';
         align-self: flex-end;
     }
 
+    .ff-refresh-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        height: 2.1rem;
+        padding: 0 .85rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #fff;
+        font-size: .8rem;
+        font-family: inherit;
+        font-weight: 500;
+        color: #555;
+        cursor: pointer;
+        transition: border-color .15s, color .15s;
+        align-self: flex-end;
+    }
+
+    .ff-refresh-btn:hover {
+        border-color: #1a1a2e;
+        color: #1a1a2e;
+    }
+
+    .ff-refresh-btn svg {
+        width: .85rem;
+        height: .85rem;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        transition: transform .3s;
+    }
+
+    .ff-refresh-btn.refreshing svg {
+        animation: ff-spin .6s linear infinite;
+    }
+
+    @keyframes ff-spin {
+        to { transform: rotate(360deg); }
+    }
+
     .ff-toggle {
         display: flex !important;
         flex-direction: row !important;
@@ -350,6 +392,10 @@ require __DIR__ . '/../app/partials/header.php';
                             Burn Rate
                         </label>
                     </div>
+                    <button type="button" class="ff-refresh-btn" id="ff-refresh-btn" title="Refresh chart data">
+                        <svg viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        Refresh
+                    </button>
                 </div>
 
                 <!-- Loading -->
@@ -613,6 +659,8 @@ require __DIR__ . '/../app/partials/header.php';
     var showReceivedCb  = document.getElementById('ff-show-received');
     var showBurnRateCb  = document.getElementById('ff-show-burnrate');
 
+    var refreshBtn      = document.getElementById('ff-refresh-btn');
+
     var chartInstance = null;
     var chartLoaded   = false;
     var lastData      = null; // cache for toggle redraws without re-fetching
@@ -636,6 +684,12 @@ require __DIR__ . '/../app/partials/header.php';
         loadChart();
     });
 
+    // Refresh button
+    refreshBtn.addEventListener('click', function () {
+        chartLoaded = true;
+        loadChart();
+    });
+
     // Toggle visibility without re-fetching
     showFulfilledCb.addEventListener('change', function () {
         if (lastData) renderChart(lastData);
@@ -649,6 +703,8 @@ require __DIR__ . '/../app/partials/header.php';
 
     function showLoading(on) {
         loadingEl.classList.toggle('visible', on);
+        refreshBtn.classList.toggle('refreshing', on);
+        refreshBtn.disabled = on;
     }
 
     function showError(msg) {
