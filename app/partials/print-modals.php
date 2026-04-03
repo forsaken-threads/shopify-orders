@@ -738,13 +738,30 @@ var PrintModals = (function () {
             sendIndex++;
         });
 
+        // Scale timeout to the number of labels being printed.
+        // Base 30s + 20s per label accounts for SSH overhead and retries.
+        var labelCount = 0;
+        rows.forEach(function (row) {
+            if (inReview) {
+                var cb = row.querySelector('.print-retry-cb');
+                if (!cb || !cb.checked) return;
+            }
+            var qtyInput = row.querySelector('input[name$="[quantity]"]');
+            labelCount += qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1;
+        });
+        var timeoutMs = Math.max(60000, 30000 + labelCount * 20000);
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
+
         fetch('api/print-order.php', {
             method: 'POST',
             headers: { 'X-CSRF-Token': CSRF_TOKEN },
             body: formData,
+            signal: controller.signal,
         })
         .then(function (res) { return res.json(); })
         .then(function (data) {
+            clearTimeout(timeoutId);
             if (!data.ok) {
                 errorEl.textContent = data.error || 'Unknown error';
                 submitBtn.disabled = false;
@@ -781,8 +798,12 @@ var PrintModals = (function () {
                 enterReviewStage(mapped);
             }
         })
-        .catch(function () {
-            errorEl.textContent = 'Network error — select the labels you need to reprint.';
+        .catch(function (err) {
+            clearTimeout(timeoutId);
+            var msg = err && err.name === 'AbortError'
+                ? 'Request timed out — some labels may have printed. Select any that need reprinting.'
+                : 'Network error — select the labels you need to reprint.';
+            errorEl.textContent = msg;
             if (!inReview) {
                 enterNetworkRetryMode();
             } else {
