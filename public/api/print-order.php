@@ -150,7 +150,7 @@ foreach ($items as $idx => $item) {
     $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $sshOpts = '-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
-    $cmd = "ssh {$sshOpts} keith@percival.spartang.com " . escapeshellarg($remoteCmd);
+    $cmd = "ssh {$sshOpts} " . escapeshellarg($config['print_ssh_target']) . ' ' . escapeshellarg($remoteCmd);
 
     // Execute for each copy (quantity) — track per-item success.
     // Transient SSH failures (exit codes 255, 1) are retried up to $maxRetries times.

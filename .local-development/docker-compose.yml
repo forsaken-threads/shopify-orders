@@ -1,5 +1,6 @@
 x-volumes: &local-development-volumes
     - .:/var/www
+    - ~/.ssh:/centnotes/.ssh:ro
 
 x-no-volumes: &no-volumes []
 

@@ -60,4 +60,7 @@ return [
     // Set DISPLAY_TIMEZONE in env.ini to any valid PHP timezone identifier,
     // e.g. America/New_York, Europe/London, Australia/Sydney.
     'display_timezone'       => (string) (getenv('DISPLAY_TIMEZONE')       ?: 'America/Detroit'),
+    // user@host passed to ssh by print-order.php.  Falls back to the prod
+    // target so deployments without the env var set continue to work.
+    'print_ssh_target'       => (string) (getenv('PRINT_SSH_TARGET')       ?: 'keith@percival.spartang.com'),
 ];
