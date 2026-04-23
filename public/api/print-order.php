@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- * Print labels for an order (two-stage flow).
+ * Print labels for an order, a single one-off label, or a bundle.
  *
  * POST /api/print-order.php
  * Body (multipart/form-data):
- *   action              — "print" (default) or "confirm"
+ *   action              — "print" (default), "confirm", "oneoff", or "bundle"
  *
  * action=print:
  *   order_id            — internal order PK
@@ -24,6 +24,13 @@ declare(strict_types=1);
  *   order_id            — internal order PK
  * Updates order status to 'printed'.
  * Returns: {ok:true}
+ *
+ * action=bundle:
+ *   bundle_id           — internal products.id of an is_bundle=1 product
+ *   items[i][*]         — same shape as action=print
+ * No order-summary label is appended, no status is transitioned, per-row
+ * save_edits still persists preferred_title/preferred_brand on the component.
+ * Log lines use bundle:<shopify_product_id> instead of order:<shopify_order_id>.
  *
  * Header: X-CSRF-Token: <token>
  */
@@ -53,15 +60,6 @@ if ($sessionToken === '' || !hash_equals($sessionToken, $providedToken)) {
     exit;
 }
 
-// ── Validate order_id ────────────────────────────────────────────────────────
-
-$orderId = (int) ($_POST['order_id'] ?? 0);
-if ($orderId <= 0) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'Invalid order ID.']);
-    exit;
-}
-
 $db = getDb($config);
 
 $action = trim((string) ($_POST['action'] ?? 'print'));
@@ -69,36 +67,70 @@ $action = trim((string) ($_POST['action'] ?? 'print'));
 $force       = (bool) ($_POST['force'] ?? false);
 $skipPersist = (bool) ($_POST['skip_persist'] ?? false);  // global flag for one-off prints
 
-if ($action === 'oneoff') {
-    // One-off prints work on any order status and never change it.
-    $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
-} elseif ($force) {
-    // Force flag allows reprinting orders that are already printed.
-    $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
+// ── Resolve the subject (order or bundle) and the log identifier ─────────────
+//
+// $logIdentifier is the token written into the print/error log lines so each
+// label can be traced back to the thing it was printed for.  For orders this
+// is the Shopify order id; for bundles it's the Shopify product id.
+
+if ($action === 'bundle') {
+    $bundleId = (int) ($_POST['bundle_id'] ?? 0);
+    if ($bundleId <= 0) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Invalid bundle ID.']);
+        exit;
+    }
+    $bundleStmt = $db->prepare(
+        "SELECT id, shopify_product_id FROM products
+         WHERE id = ? AND is_bundle = 1 AND deleted_at IS NULL"
+    );
+    $bundleStmt->execute([$bundleId]);
+    $bundle = $bundleStmt->fetch();
+    if (!$bundle) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Bundle not found.']);
+        exit;
+    }
+    $logIdentifier = 'bundle:' . $bundle['shopify_product_id'];
 } else {
-    // Regular print/confirm requires pending or fulfilled status.
-    $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ? AND status IN ('pending', 'fulfilled')");
-}
-$orderStmt->execute([$orderId]);
-$order = $orderStmt->fetch();
-
-if (!$order) {
-    http_response_code(404);
-    echo json_encode(['ok' => false, 'error' => 'Order not found or not in a printable status.']);
-    exit;
-}
-
-// ── action=confirm: finalize the order ───────────────────────────────────────
-
-if ($action === 'confirm') {
-    // Only transition pending → printed; fulfilled orders keep their status.
-    if ($order['status'] === 'pending') {
-        $db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pending'")
-           ->execute([$orderId]);
+    $orderId = (int) ($_POST['order_id'] ?? 0);
+    if ($orderId <= 0) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Invalid order ID.']);
+        exit;
     }
 
-    echo json_encode(['ok' => true]);
-    exit;
+    if ($action === 'oneoff') {
+        // One-off prints work on any order status and never change it.
+        $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
+    } elseif ($force) {
+        // Force flag allows reprinting orders that are already printed.
+        $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ?");
+    } else {
+        // Regular print/confirm requires pending or fulfilled status.
+        $orderStmt = $db->prepare("SELECT id, shopify_order_id, status FROM orders WHERE id = ? AND status IN ('pending', 'fulfilled')");
+    }
+    $orderStmt->execute([$orderId]);
+    $order = $orderStmt->fetch();
+
+    if (!$order) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Order not found or not in a printable status.']);
+        exit;
+    }
+    $logIdentifier = 'order:' . $order['shopify_order_id'];
+
+    // ── action=confirm: finalize the order ───────────────────────────────
+    if ($action === 'confirm') {
+        // Only transition pending → printed; fulfilled orders keep their status.
+        if ($order['status'] === 'pending') {
+            $db->prepare("UPDATE orders SET status = 'printed' WHERE id = ? AND status = 'pending'")
+               ->execute([$orderId]);
+        }
+
+        echo json_encode(['ok' => true]);
+        exit;
+    }
 }
 
 // ── action=print: execute print commands and return per-item results ─────────
@@ -133,9 +165,10 @@ foreach ($items as $idx => $item) {
     $preferredTitle = (string) ($item['preferred_title'] ?? '');
     $preferredBrand = (string) ($item['preferred_brand'] ?? '');
 
-    $isOrderLabel = ($ml === 'order');
+    $isOrderLabel  = ($ml === 'order');
+    $isBundleLabel = ($ml === 'bundle');
 
-    if (!$isOrderLabel && !in_array($ml, $validMlSizes, true)) {
+    if (!$isOrderLabel && !$isBundleLabel && !in_array($ml, $validMlSizes, true)) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Invalid or missing ML size for item: ' . $title]);
         exit;
@@ -146,7 +179,9 @@ foreach ($items as $idx => $item) {
     // Build the SSH print command with timeouts to prevent indefinite hangs.
     // ConnectTimeout: fail fast if the printer host is unreachable.
     // ServerAliveInterval/CountMax: detect a stalled connection within 15s.
-    $mlArg = $isOrderLabel ? 'Order' : $ml . 'ml';
+    $mlArg = $isOrderLabel
+        ? 'Order'
+        : ($isBundleLabel ? 'Bundle' : $ml . 'ml');
     $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $sshOpts = '-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
@@ -170,7 +205,7 @@ foreach ($items as $idx => $item) {
             $outputStr = implode("\n", $cmdOutput);
 
             if ($cmdResult === 0) {
-                $logLine = "[{$timestamp}] exit:0 | {$elapsed}s | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}\n{$outputStr}\n---\n";
+                $logLine = "[{$timestamp}] exit:0 | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}\n{$outputStr}\n---\n";
                 file_put_contents($logDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
                 $printed = true;
                 break;
@@ -178,7 +213,7 @@ foreach ($items as $idx => $item) {
 
             // Log every failed attempt
             $retryLabel = $attempt < $maxRetries ? " (attempt " . ($attempt + 1) . "/{$maxRetries}, will retry)" : " (final attempt)";
-            $logLine = "[{$timestamp}] exit:{$cmdResult} | {$elapsed}s | {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']}{$retryLabel}\ncmd: {$cmd}\n{$outputStr}\n---\n";
+            $logLine = "[{$timestamp}] exit:{$cmdResult} | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}{$retryLabel}\ncmd: {$cmd}\n{$outputStr}\n---\n";
             file_put_contents($logDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
 
             // Only retry on SSH transport errors (255) or general errors (1) that
@@ -206,7 +241,7 @@ foreach ($items as $idx => $item) {
     $results[] = $result;
 
     // Log the label entry
-    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | order:{$order['shopify_order_id']} | " . ($itemFailed ? 'FAIL' : 'ok') . "\n";
+    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | " . ($itemFailed ? 'FAIL' : 'ok') . "\n";
 
     // Update preferred title/brand in products table if the submitted values
     // differ from the current preferences.

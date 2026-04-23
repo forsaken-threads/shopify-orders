@@ -177,4 +177,20 @@ if (!empty($toBackfill)) {
     echo "Backfilled normalized_title for " . count($toBackfill) . " product(s).\n";
 }
 
+// ── Bundle completion state ──────────────────────────────────────────────────
+//
+// Tracks whether a bundle's component associations have been curated.  A bundle
+// (products.is_bundle = 1) is considered "incomplete" when either there is no
+// row here for it, or its row has is_complete = 0.  Marking complete moves the
+// bundle out of the management list and makes it eligible for the bundle print
+// lookup; reopening sets is_complete = 0.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS bundle_states (
+        product_id  INTEGER PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
+        is_complete INTEGER NOT NULL DEFAULT 0,
+        updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+SQL);
+
 echo "Migration complete.\n";

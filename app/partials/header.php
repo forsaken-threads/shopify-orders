@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * Set these variables before require-ing this file:
  *   string      $pageTitle  — rendered in <title>
- *   string|null $activePage — 'orders' | 'reports' | null (highlights the active nav link)
+ *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | null (highlights the active nav link)
  */
 
 $activePage ??= null;
@@ -604,6 +604,7 @@ function toggleAccordion(cardId) {
         <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>
         <li><a class="nav-link<?= $activePage === 'reports' ? ' active' : '' ?>" href="reports.php">Reports</a></li>
         <li><a class="nav-link<?= $activePage === 'charts'  ? ' active' : '' ?>" href="charts.php">Charts</a></li>
+        <li><a class="nav-link<?= $activePage === 'bundles' ? ' active' : '' ?>" href="bundles.php">Bundles</a></li>
     </ul>
     <div class="navbar-search">
         <input type="text" class="navbar-search-input" id="navbar-search-trigger" placeholder="Search orders…" readonly>
