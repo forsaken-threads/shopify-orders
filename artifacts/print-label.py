@@ -156,6 +156,11 @@ def draw_text_right(draw, right_x, y, text, font, fill='black'):
     draw.text((right_x - w, y), text, font=font, fill=fill)
 
 
+def draw_text_center(draw, center_x, y, text, font, fill='black'):
+    w = text_width(draw, text, font)
+    draw.text((center_x - w // 2, y), text, font=font, fill=fill)
+
+
 def paste_logo(img, right_x, y, line_h):
     """Paste logo at right_x, scaled to line_h, return logo width."""
     logo = Image.open(LOGO_PATH).convert('RGBA')
@@ -285,89 +290,45 @@ def build_1ml(title, brand, cfg):
 
 def build_bundle(title, brand, cfg):
     """
-    Bundle name label — currently identical to 1ml.  Kept as a separate path
-    so the bundle-name layout can diverge (different strip/wrap rules, logo
-    placement, etc.) without affecting product labels.  The caller supplies
-    title=line1 and brand=line2, already split by the user in the UI.
+    Bundle name label — labels the bubble wrapper that contains the bundle's
+    components.  Two lines, both ALL CAPS, horizontally centered.  Font fills
+    the tape height (one line if brand is empty, two lines otherwise).  Label
+    width grows to fit content; cfg['length'] is the minimum width so short
+    names don't produce a stubby label.
     """
-    MIN_READABLE_SIZE = 14
+    margin_h = cfg['margin_h']
+    margin_v = cfg['margin_v']
+    print_h  = cfg['print_h']
+    min_w    = cfg['length']
 
-    margin_h   = cfg['margin_h']
-    margin_v   = cfg['margin_v']
-    print_h    = cfg['print_h']
-    width_px   = cfg['length']
-    max_text_w = width_px - (margin_h * 2)
+    line1 = title.upper()
+    line2 = brand.upper()
+
+    num_lines    = 2 if line2 else 1
+    line_spacing = 1.15 if num_lines == 2 else 1.0
+
+    _, font = fit_font_to_height(print_h, num_lines, line_spacing=line_spacing)
+
+    dummy  = Image.new('RGB', (1, 1))
+    dd     = ImageDraw.Draw(dummy)
+    line_h = text_height(dd, 'Ag', font)
+    gap    = int(line_h * (line_spacing - 1))
+
+    content_w = text_width(dd, line1, font)
+    if line2:
+        content_w = max(content_w, text_width(dd, line2, font))
+    width_px = max(min_w, content_w + 2 * margin_h)
 
     img, draw = make_canvas(width_px)
+    center_x  = width_px // 2
 
-    title_uc = title.upper()
+    total_h = line_h * num_lines + gap * (num_lines - 1)
+    y = calc_y_start(total_h, margin_v, font)
 
-    _, font = fit_font_to_height(print_h, 3)
-    line_h  = text_height(draw, 'Ag', font)
-    spacing = int(line_h * 0.15)
-
-    single_line_font = None
-    if text_width(draw, title_uc, font) <= max_text_w:
-        single_line_font = font
-    else:
-        for size in range(60, MIN_READABLE_SIZE - 1, -1):
-            f  = load_font(size)
-            lh = text_height(draw, 'Ag', f)
-            total = lh * 3 + int(lh * 0.15) * 2
-            if total <= print_h and text_width(draw, title_uc, f) <= max_text_w:
-                single_line_font = f
-                break
-
-    if single_line_font is not None:
-        font    = single_line_font
-        line_h  = text_height(draw, 'Ag', font)
-        spacing = int(line_h * 0.15)
-
-        brand_font = font
-        if text_width(draw, brand, font) > max_text_w:
-            _, brand_font = fit_font_to_width(draw, brand, max_text_w, 60)
-
-        rebottled_font = font
-        if text_width(draw, REBOTTLED_SHORT, font) > max_text_w:
-            _, rebottled_font = fit_font_to_width(draw, REBOTTLED_SHORT, max_text_w, 60)
-
-        total_h = line_h * 3 + spacing * 2
-        y = calc_y_start(total_h, margin_v, font)
-
-        draw_text_left(draw, margin_h, y, title_uc, font)
-        y += line_h + spacing
-        draw_text_left(draw, margin_h, y, brand, brand_font)
-        y += line_h + spacing
-        draw_text_left(draw, margin_h, y, REBOTTLED_SHORT, rebottled_font)
-
-    else:
-        line1, line2 = wrap_title(draw, title_uc, font, max_text_w)
-
-        for size in range(60, 4, -1):
-            f  = load_font(size)
-            lh = text_height(draw, 'Ag', f)
-            sp = int(lh * 0.15)
-            total = lh * 3 + sp * 2
-            if (total <= print_h
-                    and text_width(draw, line1, f) <= max_text_w
-                    and text_width(draw, line2, f) <= max_text_w):
-                font    = f
-                line_h  = lh
-                spacing = sp
-                break
-
-        brand_font = font
-        if text_width(draw, brand, font) > max_text_w:
-            _, brand_font = fit_font_to_width(draw, brand, max_text_w, 60)
-
-        total_h = line_h * 3 + spacing * 2
-        y = calc_y_start(total_h, margin_v, font)
-
-        draw_text_left(draw, margin_h, y, line1, font)
-        y += line_h + spacing
-        draw_text_left(draw, margin_h, y, line2, font)
-        y += line_h + spacing
-        draw_text_left(draw, margin_h, y, brand, brand_font)
+    draw_text_center(draw, center_x, y, line1, font)
+    if line2:
+        y += line_h + gap
+        draw_text_center(draw, center_x, y, line2, font)
 
     return img
 
