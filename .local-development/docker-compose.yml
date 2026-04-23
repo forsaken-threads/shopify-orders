@@ -1,0 +1,39 @@
+x-volumes: &local-development-volumes
+    - .:/var/www
+
+x-no-volumes: &no-volumes []
+
+networks:
+  default:
+    name: shopify-orders-development
+    external: true
+
+services:
+  web:
+    build:
+      # The `do` command pipes this file to docker-compose from the repo root,
+      # so the build context is the repo root.
+      context: .
+      dockerfile: .deployment/Dockerfile
+      target: ${BUILD_TARGET}
+      args:
+        - SOURCE_UID=$SOURCE_UID
+        - SOURCE_GID=$SOURCE_GID
+        - COMMIT_HASH=$COMMIT_HASH
+
+    hostname: ${NICKNAME}
+
+    networks:
+      - default
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+    # Set on-the-fly by `do` as needed; default is local-development.
+    volumes: *local-development-volumes #%VOLUMES_ALIAS%
+
+    ports:
+      - 127.0.0.1:${SERVE_PORT_1}:80
