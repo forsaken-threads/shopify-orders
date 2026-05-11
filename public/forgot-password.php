@@ -1,0 +1,297 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Forgot-password request handler.
+ *
+ * GET  /forgot-password.php          — username entry form.
+ * POST /forgot-password.php          — record a single-use reset token (only
+ *                                       if the username matches an active
+ *                                       user with an email on file) and
+ *                                       email out a link.  The response page
+ *                                       is the same whether or not anything
+ *                                       was sent, so the form can't be used
+ *                                       to probe for valid usernames.
+ *
+ * Tokens live in password_resets, hashed via SHA-256.  The raw token is only
+ * ever held in memory long enough to email it.  Prior outstanding tokens for
+ * the same user are invalidated when a new one is issued.
+ */
+
+$config = require __DIR__ . '/../app/config.php';
+require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../app/mailer.php';
+
+$submitted = false;
+$error     = '';
+$username  = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $token = (string) ($_POST['_csrf'] ?? '');
+    if (!hash_equals((string) ($_SESSION['csrf_token'] ?? ''), $token)) {
+        $error = 'Your session expired.  Please try again.';
+    } else {
+        $username = trim((string) ($_POST['username'] ?? ''));
+
+        if ($username === '') {
+            $error = 'Please enter your username.';
+        } else {
+            $submitted = true;
+
+            $db   = getDb($config);
+            $stmt = $db->prepare(
+                "SELECT id, name, email FROM users WHERE username = ? AND is_active = 1"
+            );
+            $stmt->execute([$username]);
+            $row = $stmt->fetch();
+
+            if ($row && trim((string) ($row['email'] ?? '')) !== '') {
+                $userId = (int) $row['id'];
+                $email  = (string) $row['email'];
+                $name   = (string) $row['name'];
+
+                // Invalidate any prior unused tokens for this user.
+                $db->prepare("UPDATE password_resets SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL")
+                   ->execute([$userId]);
+
+                // Generate a fresh token; persist only its hash.
+                $rawToken  = bin2hex(random_bytes(32));
+                $tokenHash = hash('sha256', $rawToken);
+
+                $insert = $db->prepare(
+                    "INSERT INTO password_resets (user_id, token_hash, expires_at)
+                     VALUES (?, ?, datetime('now', '+1 hour'))"
+                );
+                $insert->execute([$userId, $tokenHash]);
+
+                $resetUrl = buildResetUrl($config, $rawToken);
+                $subject  = 'Reset your Cent Notes password';
+                $html     = renderResetEmailHtml($name, $resetUrl);
+                $text     = renderResetEmailText($name, $resetUrl);
+
+                if (!sendMail($config, $email, $name, $subject, $html, $text)) {
+                    error_log('[forgot-password] SMTP send failed for user_id=' . $userId);
+                }
+            }
+            // Either way we fall through to the generic confirmation page.
+        }
+    }
+}
+
+/**
+ * Build the absolute reset URL.  Uses APP_BASE_URL from config when set;
+ * otherwise infers scheme + host from the current request (works for normal
+ * deployments but can be wrong behind reverse proxies that don't forward
+ * X-Forwarded-Proto, which is why APP_BASE_URL exists).
+ */
+function buildResetUrl(array $config, string $rawToken): string
+{
+    $base = (string) ($config['app_base_url'] ?? '');
+    if ($base === '') {
+        $fwd    = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+        $scheme = $fwd !== ''
+            ? strtolower(explode(',', $fwd)[0])
+            : (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http');
+        $base = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    }
+    return $base . '/reset-password.php?token=' . urlencode($rawToken);
+}
+
+function renderResetEmailHtml(string $name, string $url): string
+{
+    $greeting = $name !== '' ? 'Hi ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ',' : 'Hi,';
+    $safeUrl  = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+    return <<<HTML
+<!doctype html>
+<html><body style="font-family: system-ui, sans-serif; color: #1a1a2e; line-height: 1.55;">
+<p>{$greeting}</p>
+<p>Someone requested a password reset for your Cent Notes account.  If that
+was you, click the link below to choose a new password.  The link is valid
+for one hour and can only be used once.</p>
+<p><a href="{$safeUrl}" style="display:inline-block; padding:.6rem 1.25rem; background:#1a1a2e; color:#fff; text-decoration:none; border-radius:6px;">Reset password</a></p>
+<p style="font-size: .85rem; color: #666;">Or copy this URL into your browser:<br><a href="{$safeUrl}">{$safeUrl}</a></p>
+<p style="font-size: .85rem; color: #666;">If you didn't request this, you can ignore this email — your password won't change.</p>
+</body></html>
+HTML;
+}
+
+function renderResetEmailText(string $name, string $url): string
+{
+    $greeting = $name !== '' ? "Hi {$name}," : 'Hi,';
+    return <<<TEXT
+{$greeting}
+
+Someone requested a password reset for your Cent Notes account.  If that was
+you, open this link to choose a new password.  It is valid for one hour and
+can only be used once.
+
+{$url}
+
+If you didn't request this, you can ignore this email — your password
+won't change.
+TEXT;
+}
+
+$pageTitle  = 'Forgot password - Cent Notes';
+$activePage = null;
+$hideNav    = true;
+require __DIR__ . '/../app/partials/header.php';
+?>
+<style>
+    .auth-main {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 1.5rem;
+    }
+
+    .auth-card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.09);
+        padding: 2.25rem 2.25rem 2rem;
+        width: 100%;
+        max-width: 380px;
+    }
+
+    .auth-card h1 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: .35rem;
+        text-align: center;
+    }
+
+    .auth-intro {
+        font-size: .85rem;
+        color: #666;
+        text-align: center;
+        margin-bottom: 1.25rem;
+        line-height: 1.5;
+    }
+
+    .auth-field { margin-bottom: 1rem; }
+
+    .auth-field label {
+        display: block;
+        font-size: .78rem;
+        font-weight: 600;
+        color: #555;
+        margin-bottom: .35rem;
+        letter-spacing: .03em;
+    }
+
+    .auth-field input {
+        width: 100%;
+        padding: .55rem .75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: .9rem;
+        font-family: inherit;
+        color: #1a1a2e;
+        background: #fff;
+        transition: border-color .15s, box-shadow .15s;
+    }
+
+    .auth-field input:focus {
+        outline: none;
+        border-color: #1a1a2e;
+        box-shadow: 0 0 0 3px rgba(26,26,46,.08);
+    }
+
+    .auth-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        padding: .6rem .85rem;
+        border-radius: 6px;
+        font-size: .82rem;
+        margin-bottom: 1rem;
+    }
+
+    .auth-notice {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        color: #075985;
+        padding: .85rem 1rem;
+        border-radius: 6px;
+        font-size: .85rem;
+        line-height: 1.5;
+        margin-bottom: 1rem;
+    }
+
+    .auth-submit {
+        display: block;
+        width: 100%;
+        padding: .6rem 1rem;
+        background: #1a1a2e;
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: .9rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s;
+        margin-top: .5rem;
+    }
+
+    .auth-submit:hover { background: #2d2d5e; }
+
+    .auth-links {
+        text-align: center;
+        margin-top: 1.25rem;
+        font-size: .82rem;
+    }
+
+    .auth-links a {
+        color: #555;
+        text-decoration: none;
+    }
+
+    .auth-links a:hover { color: #1a1a2e; text-decoration: underline; }
+</style>
+
+<main class="auth-main">
+    <?php if ($submitted): ?>
+        <div class="auth-card">
+            <h1>Check your email</h1>
+            <div class="auth-notice">
+                If an account exists for that username and has an email
+                address on file, we've sent password reset instructions.
+                The link is valid for one hour.
+            </div>
+            <div class="auth-links">
+                <a href="login.php">← Back to sign in</a>
+            </div>
+        </div>
+    <?php else: ?>
+        <form class="auth-card" method="post" action="forgot-password.php" autocomplete="off">
+            <h1>Forgot password</h1>
+            <p class="auth-intro">
+                Enter your username and we'll email you a link to reset
+                your password.
+            </p>
+
+            <?php if ($error !== ''): ?>
+                <div class="auth-error"><?= h($error) ?></div>
+            <?php endif; ?>
+
+            <input type="hidden" name="_csrf" value="<?= h($_SESSION['csrf_token']) ?>">
+
+            <div class="auth-field">
+                <label for="username">Username</label>
+                <input id="username" name="username" type="text" autocomplete="username"
+                       value="<?= h($username) ?>" autofocus required>
+            </div>
+
+            <button class="auth-submit" type="submit">Send reset link</button>
+
+            <div class="auth-links">
+                <a href="login.php">← Back to sign in</a>
+            </div>
+        </form>
+    <?php endif; ?>
+</main>
+
+<?php require __DIR__ . '/../app/partials/footer.php'; ?>
