@@ -41,6 +41,21 @@ function h(mixed $v): string
             display: flex;
             align-items: center;
             gap: 2rem;
+            position: relative;
+        }
+
+        /* Non-production environment indicator, centered across the navbar. */
+        .navbar-env {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            color: #fbbf24;
+            font-size: .95rem;
+            font-weight: 700;
+            letter-spacing: .12em;
+            pointer-events: none;
+            white-space: nowrap;
         }
 
         .navbar-brand {
@@ -599,6 +614,9 @@ function toggleAccordion(cardId) {
 
 <nav class="navbar">
     <a class="navbar-brand" href="index.php">Cent Notes</a>
+    <?php $appEnv = (string) ($config['app_env'] ?? 'production'); if (strtolower($appEnv) !== 'production'): ?>
+    <span class="navbar-env"><?= h(strtoupper($appEnv)) ?></span>
+    <?php endif; ?>
     <?php if (!$hideNav): ?>
     <ul class="navbar-nav">
         <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>

@@ -56,6 +56,9 @@ return [
     'shopify_ini_path'       => $shopifyIniPath,
     'auth_user'              => (string) (getenv('AUTH_USER')              ?: 'admin'),
     'auth_password'          => (string) (getenv('AUTH_PASSWORD')          ?: 'changeme'),
+    // Environment name; when not "production" it is displayed in the header
+    // bar so non-prod deployments are visually distinct.
+    'app_env'                => (string) (getenv('APP_ENV')                ?: 'production'),
     // Timezone used when displaying order dates in the web UI.
     // Set DISPLAY_TIMEZONE in env.ini to any valid PHP timezone identifier,
     // e.g. America/New_York, Europe/London, Australia/Sydney.
