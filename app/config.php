@@ -77,7 +77,20 @@ return [
     'smtp_port'              => (int)    (getenv('SMTP_PORT')              ?: 587),
     'smtp_username'          => (string) (getenv('SMTP_USERNAME')          ?: ''),
     'smtp_password'          => (string) (getenv('SMTP_PASSWORD')          ?: ''),
+    // 'tls' (STARTTLS), 'ssl' (SMTPS), or 'none' (cleartext — only sensible
+    // on a trusted LAN or against a local MTA).
     'smtp_encryption'        => (string) (getenv('SMTP_ENCRYPTION')        ?: 'tls'),
+    // When false, PHPMailer skips peer verification and accepts self-signed
+    // certs — useful for local dev MTAs.  Defaults to true (secure).
+    // parse_ini_file's "false" magic-word turns into an empty string in
+    // getenv(), which we map to false here along with "0"/"no"/"off".
+    'smtp_verify_peer'       => (static function () {
+        $v = getenv('SMTP_VERIFY_PEER');
+        if ($v === false) {
+            return true;
+        }
+        return !in_array(strtolower((string) $v), ['0', 'false', 'no', 'off', ''], true);
+    })(),
     'smtp_from_email'        => (string) (getenv('SMTP_FROM_EMAIL')        ?: ''),
     'smtp_from_name'         => (string) (getenv('SMTP_FROM_NAME')         ?: 'Cent Notes'),
     // Absolute base URL of this deployment (no trailing slash).  Used to build
