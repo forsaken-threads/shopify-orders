@@ -233,4 +233,51 @@ if ($existingUsers === 0) {
     }
 }
 
+// ── Add email + is_active to users ────────────────────────────────────────────
+//
+// email is used for password-reset delivery and is editable on the profile
+// page.  Nullable so existing rows don't need a backfill; users will fill it
+// in via profile.php.
+//
+// is_active gates login: rows with is_active = 0 are rejected by
+// findUserByCredentials() and excluded from session lookup.  Existing rows
+// default to active (1) so the switchover doesn't lock anyone out.
+
+try {
+    $pdo->exec('ALTER TABLE users ADD COLUMN email TEXT');
+    echo "Added email column to users table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+try {
+    $pdo->exec('ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
+    echo "Added is_active column to users table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+// ── Password resets ──────────────────────────────────────────────────────────
+//
+// One row per outstanding reset.  token_hash is SHA-256 of the raw token that
+// goes out in the email link — the raw token is never persisted, so a leaked
+// database backup can't be used to hijack pending resets.
+//
+// expires_at is set to one hour after creation; the reset handler rejects
+// rows where expires_at < now OR used_at IS NOT NULL.  Once consumed, used_at
+// is set rather than deleting the row, so we can detect link replay.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS password_resets (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT    NOT NULL UNIQUE,
+        expires_at TEXT    NOT NULL,
+        used_at    TEXT,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
+SQL);
+
 echo "Migration complete.\n";
