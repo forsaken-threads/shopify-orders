@@ -22,9 +22,10 @@ $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../app/mailer.php';
 
-$submitted = false;
-$error     = '';
-$username  = '';
+$submitted        = false;
+$error            = '';
+$username         = '';
+$deferredUsername = null;       // populated when post-flush work is queued
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = (string) ($_POST['_csrf'] ?? '');
@@ -36,45 +37,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($username === '') {
             $error = 'Please enter your username.';
         } else {
-            $submitted = true;
-
-            $db   = getDb($config);
-            $stmt = $db->prepare(
-                "SELECT id, name, email FROM users WHERE username = ? AND is_active = 1"
-            );
-            $stmt->execute([$username]);
-            $row = $stmt->fetch();
-
-            if ($row && trim((string) ($row['email'] ?? '')) !== '') {
-                $userId = (int) $row['id'];
-                $email  = (string) $row['email'];
-                $name   = (string) $row['name'];
-
-                // Invalidate any prior unused tokens for this user.
-                $db->prepare("UPDATE password_resets SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL")
-                   ->execute([$userId]);
-
-                // Generate a fresh token; persist only its hash.
-                $rawToken  = bin2hex(random_bytes(32));
-                $tokenHash = hash('sha256', $rawToken);
-
-                $insert = $db->prepare(
-                    "INSERT INTO password_resets (user_id, token_hash, expires_at)
-                     VALUES (?, ?, datetime('now', '+1 hour'))"
-                );
-                $insert->execute([$userId, $tokenHash]);
-
-                $resetUrl = buildResetUrl($config, $rawToken);
-                $subject  = 'Reset your Cent Notes password';
-                $html     = renderResetEmailHtml($name, $resetUrl);
-                $text     = renderResetEmailText($name, $resetUrl);
-
-                if (!sendMail($config, $email, $name, $subject, $html, $text)) {
-                    error_log('[forgot-password] SMTP send failed for user_id=' . $userId);
-                }
-            }
-            // Either way we fall through to the generic confirmation page.
+            // Don't run the DB lookup + email send here — both are timing
+            // oracles (a real account with email triggers SMTP, which is
+            // slow; a missing account or empty email returns instantly).
+            // Defer everything until after the response is flushed; see
+            // the fastcgi_finish_request() block at the bottom of the file.
+            $submitted        = true;
+            $deferredUsername = $username;
         }
+    }
+}
+
+/**
+ * Look up the user, mint a one-hour single-use token, and email it.  No-op
+ * when the username doesn't match an active account or that account has no
+ * email on file.  Intended to run AFTER the response has been flushed so
+ * its cost (especially the SMTP send) doesn't reveal whether anything
+ * matched.  Any failure is logged, never surfaced to the caller.
+ */
+function processForgotPassword(array $config, string $username): void
+{
+    try {
+        $db   = getDb($config);
+        $stmt = $db->prepare(
+            "SELECT id, name, email FROM users WHERE username = ? AND is_active = 1"
+        );
+        $stmt->execute([$username]);
+        $row = $stmt->fetch();
+        if (!$row || trim((string) ($row['email'] ?? '')) === '') {
+            return;
+        }
+
+        $userId = (int) $row['id'];
+        $email  = (string) $row['email'];
+        $name   = (string) $row['name'];
+
+        // Invalidate any prior unused tokens for this user.
+        $db->prepare("UPDATE password_resets SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL")
+           ->execute([$userId]);
+
+        // Persist only the SHA-256 hash; the raw token leaves only in email.
+        $rawToken  = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $rawToken);
+        $db->prepare(
+            "INSERT INTO password_resets (user_id, token_hash, expires_at)
+             VALUES (?, ?, datetime('now', '+1 hour'))"
+        )->execute([$userId, $tokenHash]);
+
+        $resetUrl = buildResetUrl($config, $rawToken);
+        if (!sendMail(
+            $config,
+            $email,
+            $name,
+            'Reset your Cent Notes password',
+            renderResetEmailHtml($name, $resetUrl),
+            renderResetEmailText($name, $resetUrl),
+        )) {
+            error_log('[forgot-password] SMTP send failed for user_id=' . $userId);
+        }
+    } catch (\Throwable $e) {
+        error_log('[forgot-password] deferred work failed: ' . $e->getMessage());
     }
 }
 
@@ -295,3 +317,21 @@ require __DIR__ . '/../app/partials/header.php';
 </main>
 
 <?php require __DIR__ . '/../app/partials/footer.php'; ?>
+
+<?php
+// ── Deferred work: DB lookup + token + email ────────────────────────────────
+// Run AFTER the response is flushed to the client so the request takes the
+// same time whether or not the username matched a real account with an
+// email on file.  fastcgi_finish_request() is PHP-FPM-only; if it isn't
+// available the work happens synchronously like before, which still works
+// but reveals the timing oracle.
+if ($deferredUsername !== null) {
+    if (function_exists('fastcgi_finish_request')) {
+        // Persist anything we touched in the session (CSRF, etc.) before
+        // releasing the FastCGI request — otherwise the session lock is
+        // held longer than needed.
+        session_write_close();
+        fastcgi_finish_request();
+    }
+    processForgotPassword($config, $deferredUsername);
+}
