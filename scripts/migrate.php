@@ -314,4 +314,49 @@ $pdo->exec(<<<'SQL'
     CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
 SQL);
 
+// ── Time clock ───────────────────────────────────────────────────────────────
+//
+// One row per shift.  clock_out NULL means "still on the clock"; there is at
+// most one such row per user at a time, enforced in PHP (not by a unique
+// index, because SQLite would consider multiple NULLs as distinct).
+//
+// Times are stored in UTC ('YYYY-MM-DD HH:MM:SS').  All week / day grouping
+// happens in the display timezone in PHP.  edited_by / edited_at record any
+// admin correction made via /timecards.php; created_at is the insert time
+// (typically equal to clock_in, but kept distinct so manually-added punches
+// can be distinguished from organically clocked ones).
+//
+// timecard_approvals: one row per (user, pay-period week) once an admin has
+// approved that week.  Presence of a row locks every punch in that range
+// from further edits or new inserts.  week_start_date is 'YYYY-MM-DD' in
+// the display timezone, matching the boundary computed by app/timeclock.php.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS time_punches (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        clock_in   TEXT    NOT NULL,
+        clock_out  TEXT,
+        notes      TEXT,
+        edited_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        edited_at  TEXT,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_time_punches_user_in ON time_punches(user_id, clock_in);
+    CREATE INDEX IF NOT EXISTS idx_time_punches_open    ON time_punches(user_id) WHERE clock_out IS NULL;
+
+    CREATE TABLE IF NOT EXISTS timecard_approvals (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        week_start_date TEXT    NOT NULL,
+        approved_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+        approved_by     INTEGER NOT NULL REFERENCES users(id),
+        UNIQUE(user_id, week_start_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_timecard_approvals_user_week
+        ON timecard_approvals(user_id, week_start_date);
+SQL);
+
 echo "Migration complete.\n";

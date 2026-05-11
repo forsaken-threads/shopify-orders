@@ -96,4 +96,11 @@ return [
     // Absolute base URL of this deployment (no trailing slash).  Used to build
     // password-reset links in outgoing email, where relative URLs aren't valid.
     'app_base_url'           => rtrim((string) (getenv('APP_BASE_URL')     ?: ''), '/'),
+    // Day of week the pay-period week starts.  'sun' (Sunday→Saturday),
+    // 'mon' (Monday→Sunday), or 'sat' (Saturday→Friday).  Used by the
+    // time-clock pages.  Falls back to 'sun' on any unrecognised value.
+    'pay_week_start'         => (static function () {
+        $raw = strtolower((string) (getenv('PAY_WEEK_START') ?: 'sun'));
+        return in_array($raw, ['sun', 'mon', 'sat'], true) ? $raw : 'sun';
+    })(),
 ];

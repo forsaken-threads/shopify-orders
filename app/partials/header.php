@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * Set these variables before require-ing this file:
  *   string      $pageTitle  — rendered in <title>
- *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | null (highlights the active nav link)
+ *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | 'clock' | null (highlights the active nav link)
  */
 
 $activePage ??= null;
@@ -866,9 +866,16 @@ function toggleAccordion(cardId) {
         <?php if (userCan($navUser, 'bundles')): ?>
             <li><a class="nav-link<?= $activePage === 'bundles' ? ' active' : '' ?>" href="bundles.php">Bundles</a></li>
         <?php endif; ?>
+        <?php if (userCan($navUser, 'clock_in_out')): ?>
+            <li><a class="nav-link<?= $activePage === 'clock' ? ' active' : '' ?>" href="clock.php">Clock</a></li>
+        <?php endif; ?>
     </ul>
     <div class="navbar-search">
-        <input type="text" class="navbar-search-input" id="navbar-search-trigger" placeholder="Search orders…" readonly>
+        <?php // Empty wrapper acts as a flex spacer (margin-left: auto) when
+              // the user can't search, so the bell/user-menu stay right-aligned. ?>
+        <?php if (userCan($navUser, 'orders')): ?>
+            <input type="text" class="navbar-search-input" id="navbar-search-trigger" placeholder="Search orders…" readonly>
+        <?php endif; ?>
     </div>
     <?php
     $appVersion       = (string) ($config['app_version'] ?? '');
@@ -936,7 +943,7 @@ function toggleAccordion(cardId) {
 </script>
 <?php endif; ?>
 
-<?php if (!$hideNav): ?>
+<?php if (!$hideNav && userCan($navUser, 'orders')): ?>
 <!-- ── Search Modal ────────────────────────────────────────────────────── -->
 <div id="search-modal" class="search-overlay" hidden>
     <div class="search-box">
@@ -1089,7 +1096,9 @@ function toggleAccordion(cardId) {
     });
 }());
 </script>
+<?php endif; ?>
 
+<?php if (!$hideNav): ?>
 <!-- ── Release / Changelog Modal ───────────────────────────────────────── -->
 <div id="release-modal" class="release-overlay" hidden>
     <div class="release-box">

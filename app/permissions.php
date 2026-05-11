@@ -47,8 +47,8 @@ const ROLE_RANK = [
 const PERMISSIONS_BY_ROLE = [
     'basic_employee' => ['clock_in_out'],
     'data_entry'     => ['clock_in_out', 'orders', 'bundles'],
-    'admin'          => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users'],
-    'root'           => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'shopify_install'],
+    'admin'          => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards'],
+    'root'           => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'shopify_install'],
 ];
 
 /**
