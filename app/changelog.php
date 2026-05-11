@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.4.0',
+        'date'    => '2026-05-11',
+        'title'   => 'Role-based access',
+        'notes'   => [
+            'Every account now has a role.  Four levels, lowest to highest: Basic Employee (no app access yet — placeholder for the upcoming clock-in/out feature), Data Entry (Orders + Bundles), Admin (+ Reports, Charts, and user management), Root (+ Shopify install / re-auth).',
+            'Bootstrap: the existing "root" account is now Root, "admin" is Admin, and any other existing user starts as Basic Employee.  Adjust roles on the Users page as needed.',
+            'Nav links hide automatically when the signed-in user can\'t use them — Basic Employees see only Profile and Sign out in the menu.',
+            'On the Users page, the Edit / Reset password / Deactivate buttons are disabled for any user whose role is higher than yours, and the role selector only offers roles at or below your own.  You can edit your own name and email but not your own role.',
+            'Tightened: Shopify install / re-auth is now Root-only.  If you previously visited /install.php as the admin account, sign in as root for that flow.',
+        ],
+    ],
+    [
         'version' => '1.3.0',
         'date'    => '2026-05-11',
         'title'   => 'Real login, profile editing, and user management',
