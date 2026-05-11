@@ -41,7 +41,7 @@ if (empty($_SESSION['csrf_token'])) {
 function findUserByCredentials(PDO $db, string $username, string $password): ?array
 {
     $stmt = $db->prepare(
-        "SELECT id, username, password_hash, name, email, preferences, is_active
+        "SELECT id, username, password_hash, name, email, preferences, is_active, role
          FROM users WHERE username = ?"
     );
     $stmt->execute([$username]);
@@ -65,7 +65,7 @@ function findUserByCredentials(PDO $db, string $username, string $password): ?ar
 function findActiveUserById(PDO $db, int $userId): ?array
 {
     $stmt = $db->prepare(
-        "SELECT id, username, name, email, preferences, is_active
+        "SELECT id, username, name, email, preferences, is_active, role
          FROM users WHERE id = ?"
     );
     $stmt->execute([$userId]);
@@ -91,6 +91,7 @@ function hydrateUserRow(array $row): array
         'username'    => (string) $row['username'],
         'name'        => (string) ($row['name']  ?? ''),
         'email'       => (string) ($row['email'] ?? ''),
+        'role'        => (string) ($row['role']  ?? 'basic_employee'),
         'preferences' => $prefs,
     ];
 }

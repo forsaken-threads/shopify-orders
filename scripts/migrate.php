@@ -257,6 +257,40 @@ try {
     // Column already exists — nothing to do.
 }
 
+// ── Add role to users ────────────────────────────────────────────────────────
+//
+// Role-based permissions.  Four additive roles:
+//   basic_employee  — clock_in_out only (placeholder for future feature)
+//   data_entry      — + orders, bundles
+//   admin           — + reports, charts, manage_users
+//   root            — + shopify_install
+//
+// New rows default to basic_employee.  The seed step below promotes the two
+// historic accounts that previously had unrestricted access (username
+// 'root' and username 'admin') so the cut-over doesn't lock anyone out.
+// See app/permissions.php for the authoritative role → permission map.
+
+try {
+    $pdo->exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'basic_employee'");
+    echo "Added role column to users table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+// Seed admin/root.  Idempotent — re-running the migration is a no-op
+// since the role values already match.
+$promotions = [
+    'root'  => 'root',
+    'admin' => 'admin',
+];
+$updateRole = $pdo->prepare("UPDATE users SET role = ? WHERE username = ? AND role != ?");
+foreach ($promotions as $username => $role) {
+    $updateRole->execute([$role, $username, $role]);
+    if ($updateRole->rowCount() > 0) {
+        echo "Promoted user '{$username}' to role '{$role}'.\n";
+    }
+}
+
 // ── Password resets ──────────────────────────────────────────────────────────
 //
 // One row per outstanding reset.  token_hash is SHA-256 of the raw token that
