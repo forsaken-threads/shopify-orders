@@ -32,15 +32,16 @@ $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/../app/permissions.php';
 require_once __DIR__ . '/../app/password-reset.php';
 
-$me = requirePermission($config, 'manage_users');
-$db = getDb($config);
+$me     = requirePermission($config, 'manage_users');
+$db     = getDb($config);
+$myRank = userRoleRank($me);
 
 $notice = '';
 $error  = '';
 
 // Sticky form state — populated when a create or update attempt fails so
 // the modal can be re-opened with the non-secret fields still filled in.
-$form = ['id' => '', 'username' => '', 'name' => '', 'email' => ''];
+$form = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee'];
 
 // Set when an error in a modal action should re-open the modal on reload.
 $reopenMode = '';   // 'create' | 'edit' | ''
@@ -56,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $form['username'] = trim((string) ($_POST['username'] ?? ''));
             $form['name']     = trim((string) ($_POST['name']     ?? ''));
             $form['email']    = trim((string) ($_POST['email']    ?? ''));
+            $form['role']     = (string) ($_POST['role'] ?? 'basic_employee');
             $password         = (string) ($_POST['password']         ?? '');
             $confirm          = (string) ($_POST['password_confirm'] ?? '');
 
@@ -67,6 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Passwords did not match.';
             } elseif ($form['email'] !== '' && !filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
                 $error = 'Please enter a valid email address.';
+            } elseif (!in_array($form['role'], ROLES, true)) {
+                $error = 'Invalid role.';
+            } elseif (roleRank($form['role']) > $myRank) {
+                $error = "You can't grant a role higher than your own.";
             } else {
                 $exists = $db->prepare("SELECT 1 FROM users WHERE username = ?");
                 $exists->execute([$form['username']]);
@@ -75,16 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $hash = password_hash($password, PASSWORD_DEFAULT);
                     $db->prepare(
-                        "INSERT INTO users (username, password_hash, name, email, preferences, is_active)
-                         VALUES (?, ?, ?, ?, '{}', 1)"
+                        "INSERT INTO users (username, password_hash, name, email, role, preferences, is_active)
+                         VALUES (?, ?, ?, ?, ?, '{}', 1)"
                     )->execute([
                         $form['username'],
                         $hash,
                         $form['name'],
                         $form['email'] !== '' ? $form['email'] : null,
+                        $form['role'],
                     ]);
                     $notice = 'Created user "' . $form['username'] . '".';
-                    $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => ''];
+                    $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee'];
                 }
             }
             if ($error !== '') {
@@ -94,30 +101,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $form['id']    = (string) (int) ($_POST['user_id'] ?? 0);
             $form['name']  = trim((string) ($_POST['name']  ?? ''));
             $form['email'] = trim((string) ($_POST['email'] ?? ''));
+            $postedRole    = isset($_POST['role']) ? (string) $_POST['role'] : null;
 
             $targetId = (int) $form['id'];
-            if ($targetId <= 0) {
+
+            // Look up the target so we can enforce hierarchy rules.
+            $stmt = $db->prepare("SELECT id, username, role FROM users WHERE id = ?");
+            $stmt->execute([$targetId]);
+            $target = $stmt->fetch() ?: null;
+
+            if ($targetId <= 0 || $target === null) {
                 $error = 'Invalid user.';
+            } elseif (roleRank((string) $target['role']) > $myRank) {
+                $error = "You can't edit a user whose role is higher than yours.";
             } elseif ($form['email'] !== '' && !filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
                 $error = 'Please enter a valid email address.';
             } else {
-                // Carry the existing username back so the modal title can
-                // still show who's being edited if validation re-fails.
-                $stmt = $db->prepare("SELECT username FROM users WHERE id = ?");
-                $stmt->execute([$targetId]);
-                $form['username'] = (string) ($stmt->fetchColumn() ?: '');
+                $form['username'] = (string) $target['username'];
 
-                $db->prepare(
-                    "UPDATE users
-                     SET name = ?, email = ?, updated_at = datetime('now')
-                     WHERE id = ?"
-                )->execute([
-                    $form['name'],
-                    $form['email'] !== '' ? $form['email'] : null,
-                    $targetId,
-                ]);
-                $notice = 'Updated user.';
-                $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => ''];
+                // Role only changes for non-self edits.  The modal hides
+                // the selector when editing self, so a posted 'role' field
+                // in that case is either bogus or stale — ignore it.
+                $isSelfEdit = (int) $target['id'] === (int) $me['id'];
+                $finalRole  = (string) $target['role'];
+
+                if (!$isSelfEdit && $postedRole !== null) {
+                    if (!in_array($postedRole, ROLES, true)) {
+                        $error = 'Invalid role.';
+                    } elseif (roleRank($postedRole) > $myRank) {
+                        $error = "You can't grant a role higher than your own.";
+                    } else {
+                        $finalRole = $postedRole;
+                    }
+                }
+                $form['role'] = $finalRole;
+
+                if ($error === '') {
+                    $db->prepare(
+                        "UPDATE users
+                         SET name = ?, email = ?, role = ?, updated_at = datetime('now')
+                         WHERE id = ?"
+                    )->execute([
+                        $form['name'],
+                        $form['email'] !== '' ? $form['email'] : null,
+                        $finalRole,
+                        $targetId,
+                    ]);
+                    $notice = 'Updated user.';
+                    $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee'];
+                }
             }
             if ($error !== '') {
                 $reopenMode = 'edit';
@@ -127,12 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($targetId <= 0) {
                 $error = 'Invalid user.';
             } else {
-                $stmt = $db->prepare("SELECT id, name, email, is_active FROM users WHERE id = ?");
+                $stmt = $db->prepare("SELECT id, name, email, role, is_active FROM users WHERE id = ?");
                 $stmt->execute([$targetId]);
                 $u = $stmt->fetch();
                 $email = trim((string) ($u['email'] ?? ''));
                 if (!$u) {
                     $error = 'User not found.';
+                } elseif (roleRank((string) $u['role']) > $myRank) {
+                    $error = "You can't reset a user whose role is higher than yours.";
                 } elseif ((int) $u['is_active'] !== 1) {
                     $error = "Can't reset — that account is inactive.";
                 } elseif ($email === '') {
@@ -151,23 +185,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($targetId === (int) $me['id']) {
                 $error = "You can't deactivate your own account.";
             } else {
-                $db->prepare(
-                    "UPDATE users
-                     SET is_active = CASE is_active WHEN 1 THEN 0 ELSE 1 END,
-                         updated_at = datetime('now')
-                     WHERE id = ?"
-                )->execute([$targetId]);
-                $notice = 'Updated user status.';
+                $stmt = $db->prepare("SELECT role FROM users WHERE id = ?");
+                $stmt->execute([$targetId]);
+                $row = $stmt->fetch() ?: null;
+                if ($row === null) {
+                    $error = 'User not found.';
+                } elseif (roleRank((string) $row['role']) > $myRank) {
+                    $error = "You can't change a user whose role is higher than yours.";
+                } else {
+                    $db->prepare(
+                        "UPDATE users
+                         SET is_active = CASE is_active WHEN 1 THEN 0 ELSE 1 END,
+                             updated_at = datetime('now')
+                         WHERE id = ?"
+                    )->execute([$targetId]);
+                    $notice = 'Updated user status.';
+                }
             }
         }
     }
 }
 
 $users = $db->query(
-    "SELECT id, username, name, email, is_active, created_at
+    "SELECT id, username, name, email, role, is_active, created_at
      FROM users
      ORDER BY is_active DESC, username COLLATE NOCASE ASC"
 )->fetchAll();
+
+// Roles the current user is allowed to grant — used to populate the
+// modal's role <select>.  Anything above $myRank is filtered out.
+$assignableRoles = array_filter(ROLES, fn ($r) => roleRank($r) <= $myRank);
 
 $pageTitle  = 'Users - Cent Notes';
 $activePage = null;
@@ -386,7 +433,8 @@ require __DIR__ . '/../app/partials/header.php';
         letter-spacing: .03em;
     }
 
-    .field input {
+    .field input,
+    .field select {
         padding: .5rem .7rem;
         border: 1px solid #d1d5db;
         border-radius: 6px;
@@ -397,13 +445,15 @@ require __DIR__ . '/../app/partials/header.php';
         transition: border-color .15s, box-shadow .15s;
     }
 
-    .field input:focus {
+    .field input:focus,
+    .field select:focus {
         outline: none;
         border-color: #1a1a2e;
         box-shadow: 0 0 0 3px rgba(26,26,46,.08);
     }
 
-    .field input:disabled { background: #f5f5f8; color: #888; cursor: not-allowed; }
+    .field input:disabled,
+    .field select:disabled { background: #f5f5f8; color: #888; cursor: not-allowed; }
 
     .field-readonly-hint {
         font-size: .72rem;
@@ -442,7 +492,10 @@ require __DIR__ . '/../app/partials/header.php';
     <?php if ($notice !== ''): ?>
         <div class="notice"><?= h($notice) ?></div>
     <?php endif; ?>
-    <?php if ($error !== ''): ?>
+    <?php // Modal-action errors render inside the modal so they're visible
+          // when it re-opens.  Errors from row-button actions (toggle,
+          // reset_password) still surface here on the page. ?>
+    <?php if ($error !== '' && $reopenMode === ''): ?>
         <div class="error"><?= h($error) ?></div>
     <?php endif; ?>
 
@@ -453,6 +506,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th>Username</th>
                     <th>Name</th>
                     <th class="col-email">Email</th>
+                    <th>Role</th>
                     <th class="col-created">Created</th>
                     <th>Status</th>
                     <th class="col-action"></th>
@@ -461,9 +515,16 @@ require __DIR__ . '/../app/partials/header.php';
             <tbody>
                 <?php foreach ($users as $u): ?>
                     <?php
-                        $isSelf    = (int) $u['id'] === (int) $me['id'];
-                        $isActive  = (int) $u['is_active'] === 1;
-                        $hasEmail  = trim((string) ($u['email'] ?? '')) !== '';
+                        $isSelf       = (int) $u['id'] === (int) $me['id'];
+                        $isActive     = (int) $u['is_active'] === 1;
+                        $hasEmail     = trim((string) ($u['email'] ?? '')) !== '';
+                        $targetRole   = (string) ($u['role'] ?? 'basic_employee');
+                        $targetRank   = roleRank($targetRole);
+                        $outranksMe   = $targetRank > $myRank;
+                        // The shared "you can't touch this row" guard for Reset
+                        // and Deactivate, beyond the per-action conditions.
+                        $rankBlocked  = $outranksMe;
+                        $rankTooltip  = "This user's role is higher than yours.";
                     ?>
                     <tr>
                         <td>
@@ -472,6 +533,7 @@ require __DIR__ . '/../app/partials/header.php';
                         </td>
                         <td><?= $u['name'] !== '' ? h($u['name']) : '<span class="muted">—</span>' ?></td>
                         <td class="col-email"><?= $hasEmail ? h($u['email']) : '<span class="muted">—</span>' ?></td>
+                        <td><?= h(ROLE_LABELS[$targetRole] ?? $targetRole) ?></td>
                         <td class="col-created"><?= h((string) $u['created_at']) ?></td>
                         <td>
                             <span class="status-badge status-<?= $isActive ? 'active' : 'inactive' ?>">
@@ -484,7 +546,10 @@ require __DIR__ . '/../app/partials/header.php';
                                         data-id="<?= (int) $u['id'] ?>"
                                         data-name="<?= h($u['name']) ?>"
                                         data-email="<?= h((string) $u['email']) ?>"
-                                        data-username="<?= h($u['username']) ?>">
+                                        data-username="<?= h($u['username']) ?>"
+                                        data-role="<?= h($targetRole) ?>"
+                                        data-self="<?= $isSelf ? '1' : '0' ?>"
+                                        <?php if ($rankBlocked): ?>disabled title="<?= h($rankTooltip) ?>"<?php endif; ?>>
                                     Edit
                                 </button>
 
@@ -493,8 +558,10 @@ require __DIR__ . '/../app/partials/header.php';
                                     <input type="hidden" name="action"  value="reset_password">
                                     <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
                                     <button type="submit" class="btn-row"
-                                            <?php if (!$hasEmail): ?>disabled title="No email on file"<?php endif; ?>
-                                            <?php if (!$isActive): ?>disabled title="Account is inactive"<?php endif; ?>
+                                            <?php if ($rankBlocked): ?>disabled title="<?= h($rankTooltip) ?>"
+                                            <?php elseif (!$isActive): ?>disabled title="Account is inactive"
+                                            <?php elseif (!$hasEmail): ?>disabled title="No email on file"
+                                            <?php endif; ?>
                                             data-confirm="Send a password-reset link to <?= h((string) $u['email']) ?>?">
                                         Reset password
                                     </button>
@@ -506,7 +573,9 @@ require __DIR__ . '/../app/partials/header.php';
                                     <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
                                     <button type="submit"
                                             class="btn-row<?= $isActive ? ' deactivate' : '' ?>"
-                                            <?= $isSelf ? 'disabled title="You can\'t deactivate your own account."' : '' ?>>
+                                            <?php if ($isSelf): ?>disabled title="You can't deactivate your own account."
+                                            <?php elseif ($rankBlocked): ?>disabled title="<?= h($rankTooltip) ?>"
+                                            <?php endif; ?>>
                                         <?= $isActive ? 'Deactivate' : 'Reactivate' ?>
                                     </button>
                                 </form>
@@ -528,6 +597,11 @@ require __DIR__ . '/../app/partials/header.php';
         </div>
         <form id="user-modal-form" method="post" action="users.php" autocomplete="off">
             <div class="modal-body">
+                <div id="user-modal-error" class="error" style="margin-bottom: 1rem;"
+                     <?= ($error !== '' && $reopenMode !== '') ? '' : 'hidden' ?>>
+                    <?= h($error) ?>
+                </div>
+
                 <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="action"  id="user-modal-action"   value="create">
                 <input type="hidden" name="user_id" id="user-modal-user-id" value="">
@@ -563,6 +637,23 @@ require __DIR__ . '/../app/partials/header.php';
                         <label for="modal-password-confirm">Confirm password</label>
                         <input id="modal-password-confirm" name="password_confirm" type="password" autocomplete="new-password">
                     </div>
+
+                    <div class="field full" id="field-role">
+                        <label for="modal-role">Role</label>
+                        <select id="modal-role" name="role">
+                            <?php foreach ($assignableRoles as $r): ?>
+                                <option value="<?= h($r) ?>"<?= $form['role'] === $r ? ' selected' : '' ?>>
+                                    <?= h(ROLE_LABELS[$r]) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="field full" id="field-role-self" hidden>
+                        <label>Role</label>
+                        <input type="text" id="modal-role-self" value="" disabled>
+                        <div class="field-readonly-hint">You can't change your own role.</div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -589,9 +680,18 @@ require __DIR__ . '/../app/partials/header.php';
     var passEl      = document.getElementById('modal-password');
     var passConfEl  = document.getElementById('modal-password-confirm');
     var usernameRO  = document.getElementById('modal-username-readonly');
+    var roleEl      = document.getElementById('modal-role');
+    var roleSelfEl  = document.getElementById('modal-role-self');
     var fieldUser   = document.getElementById('field-username');
     var fieldUserRO = document.getElementById('field-username-readonly');
+    var fieldRole   = document.getElementById('field-role');
+    var fieldRoleS  = document.getElementById('field-role-self');
     var createOnly  = document.querySelectorAll('.create-only');
+
+    // Human-readable role labels, mirroring ROLE_LABELS in app/permissions.php.
+    // Used by the self-edit readonly display where we have only the role key
+    // from the data-role attribute.
+    var ROLE_LABELS = <?= json_encode(ROLE_LABELS) ?>;
 
     function showCreateOnlyFields(show) {
         createOnly.forEach(function (el) {
@@ -604,6 +704,19 @@ require __DIR__ . '/../app/partials/header.php';
         });
     }
 
+    function setRoleValue(value) {
+        if (!value) { return; }
+        for (var i = 0; i < roleEl.options.length; i++) {
+            if (roleEl.options[i].value === value) {
+                roleEl.selectedIndex = i;
+                return;
+            }
+        }
+        // Target's role isn't in our assignable list (shouldn't happen
+        // because the Edit button is disabled for higher-ranked users,
+        // but be defensive).  Leave the selector at its default.
+    }
+
     function openCreate(prefill) {
         titleEl.textContent  = 'Add a user';
         submitEl.textContent = 'Create user';
@@ -614,11 +727,17 @@ require __DIR__ . '/../app/partials/header.php';
         fieldUserRO.hidden = true;
         showCreateOnlyFields(true);
 
+        // Real role selector for create.
+        fieldRole.hidden  = false;
+        fieldRoleS.hidden = true;
+        roleEl.disabled   = false;
+
         usernameEl.value = (prefill && prefill.username) || '';
         nameEl.value     = (prefill && prefill.name)     || '';
         emailEl.value    = (prefill && prefill.email)    || '';
         passEl.value     = '';
         passConfEl.value = '';
+        setRoleValue((prefill && prefill.role) || 'basic_employee');
 
         modal.hidden = false;
         setTimeout(function () { usernameEl.focus(); }, 30);
@@ -635,6 +754,21 @@ require __DIR__ . '/../app/partials/header.php';
         usernameRO.value   = data.username || '';
         showCreateOnlyFields(false);
 
+        var isSelf = data.self === '1' || data.self === true;
+        if (isSelf) {
+            // Self-edit: hide the real selector (so it isn't submitted) and
+            // show the read-only display labelled with the role they have.
+            fieldRole.hidden  = true;
+            fieldRoleS.hidden = false;
+            roleEl.disabled   = true;
+            roleSelfEl.value  = ROLE_LABELS[data.role] || data.role || '';
+        } else {
+            fieldRole.hidden  = false;
+            fieldRoleS.hidden = true;
+            roleEl.disabled   = false;
+            setRoleValue(data.role);
+        }
+
         nameEl.value  = data.name  || '';
         emailEl.value = data.email || '';
 
@@ -646,7 +780,18 @@ require __DIR__ . '/../app/partials/header.php';
         modal.hidden = true;
     }
 
-    document.getElementById('open-create-modal').addEventListener('click', function () { openCreate(); });
+    var modalErrEl = document.getElementById('user-modal-error');
+    function clearModalError() {
+        if (modalErrEl) {
+            modalErrEl.hidden = true;
+            modalErrEl.textContent = '';
+        }
+    }
+
+    document.getElementById('open-create-modal').addEventListener('click', function () {
+        clearModalError();
+        openCreate();
+    });
     document.getElementById('user-modal-close').addEventListener('click', closeModal);
     document.getElementById('user-modal-cancel').addEventListener('click', closeModal);
 
@@ -661,11 +806,15 @@ require __DIR__ . '/../app/partials/header.php';
     // Edit buttons populate the modal from data-* attributes.
     document.querySelectorAll('.js-edit').forEach(function (btn) {
         btn.addEventListener('click', function () {
+            if (btn.disabled) { return; }
+            clearModalError();
             openEdit({
                 id:       btn.dataset.id,
                 username: btn.dataset.username,
                 name:     btn.dataset.name,
                 email:    btn.dataset.email,
+                role:     btn.dataset.role,
+                self:     btn.dataset.self,
             });
         });
     });
@@ -688,6 +837,7 @@ require __DIR__ . '/../app/partials/header.php';
             username: <?= json_encode($form['username']) ?>,
             name:     <?= json_encode($form['name']) ?>,
             email:    <?= json_encode($form['email']) ?>,
+            role:     <?= json_encode($form['role']) ?>,
         });
     <?php elseif ($reopenMode === 'edit'): ?>
         openEdit({
@@ -695,6 +845,8 @@ require __DIR__ . '/../app/partials/header.php';
             username: <?= json_encode($form['username']) ?>,
             name:     <?= json_encode($form['name']) ?>,
             email:    <?= json_encode($form['email']) ?>,
+            role:     <?= json_encode($form['role']) ?>,
+            self:     <?= json_encode((int) $form['id'] === (int) $me['id'] ? '1' : '0') ?>,
         });
     <?php endif; ?>
 }());
