@@ -72,4 +72,15 @@ return [
     // user@host passed to ssh by print-order.php.  Falls back to the prod
     // target so deployments without the env var set continue to work.
     'print_ssh_target'       => (string) (getenv('PRINT_SSH_TARGET')       ?: 'keith@percival.spartang.com'),
+    // ── SMTP (used by app/mailer.php for password-reset emails) ─────────────
+    'smtp_host'              => (string) (getenv('SMTP_HOST')              ?: ''),
+    'smtp_port'              => (int)    (getenv('SMTP_PORT')              ?: 587),
+    'smtp_username'          => (string) (getenv('SMTP_USERNAME')          ?: ''),
+    'smtp_password'          => (string) (getenv('SMTP_PASSWORD')          ?: ''),
+    'smtp_encryption'        => (string) (getenv('SMTP_ENCRYPTION')        ?: 'tls'),
+    'smtp_from_email'        => (string) (getenv('SMTP_FROM_EMAIL')        ?: ''),
+    'smtp_from_name'         => (string) (getenv('SMTP_FROM_NAME')         ?: 'Cent Notes'),
+    // Absolute base URL of this deployment (no trailing slash).  Used to build
+    // password-reset links in outgoing email, where relative URLs aren't valid.
+    'app_base_url'           => rtrim((string) (getenv('APP_BASE_URL')     ?: ''), '/'),
 ];

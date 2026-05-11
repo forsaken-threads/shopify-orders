@@ -1,5 +1,6 @@
-# Base image for local development: PHP 8.4 + nginx + SQLite + intl.
-# No composer / node / mysql / redis — this app is raw PHP + SQLite.
+# Base image for local development: PHP 8.4 + nginx + SQLite + intl + composer.
+# No node / mysql / redis — this app is raw PHP + SQLite, with composer pulling
+# a single dependency (PHPMailer) for outgoing email.
 FROM php:8.4-fpm-alpine AS base
 
 USER root
@@ -14,6 +15,10 @@ RUN apk update && apk upgrade && apk add \
 
 RUN docker-php-ext-install pdo_sqlite intl opcache \
     && docker-php-ext-enable opcache
+
+# Composer (PHP dependency manager).  vendor/ is gitignored — run
+# `./do composer install` after pulling to populate it.
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
 # PHP and nginx configuration.
 COPY .deployment/config/local.ini /usr/local/etc/php/php.ini

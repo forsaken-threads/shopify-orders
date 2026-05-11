@@ -1,0 +1,14 @@
+{
+    "name": "forsakenthreads/shopify-orders",
+    "description": "Cent Notes — internal Shopify order management for Decantalize",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.2",
+        "phpmailer/phpmailer": "^6.9"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

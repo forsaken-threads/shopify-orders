@@ -12,3 +12,7 @@ orders.sqlite-shm
 # Webhook log files (including rotated: *.log-YYYYMMDD and *.log-YYYYMMDD.gz)
 logs/*.log
 logs/*.log-*
+
+# Composer-managed dependencies. composer.json and composer.lock are committed;
+# vendor/ is regenerated via `composer install` (or `./do composer install`).
+vendor/
