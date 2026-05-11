@@ -408,6 +408,7 @@ require __DIR__ . '/../app/partials/header.php';
                                 <tr>
                                     <th>Variant</th>
                                     <th>Units Sold</th>
+                                    <th>ML Sold</th>
                                     <th>Revenue</th>
                                     <th>Share</th>
                                 </tr>
@@ -417,6 +418,7 @@ require __DIR__ . '/../app/partials/header.php';
                                 <tr>
                                     <td>Total</td>
                                     <td id="pp-foot-units">—</td>
+                                    <td id="pp-foot-ml">—</td>
                                     <td id="pp-foot-revenue">—</td>
                                     <td></td>
                                 </tr>
@@ -606,6 +608,7 @@ require __DIR__ . '/../app/partials/header.php';
         document.getElementById('pp-total-units').textContent     = fmtNum(summary.total_units);
         document.getElementById('pp-total-revenue').textContent   = fmtCurrency(totalRevenue);
         document.getElementById('pp-foot-units').textContent      = fmtNum(summary.total_units);
+        document.getElementById('pp-foot-ml').textContent         = fmtNum(summary.total_ml);
         document.getElementById('pp-foot-revenue').textContent    = fmtCurrency(totalRevenue);
 
         const tbody = document.getElementById('pp-variant-rows');
@@ -613,7 +616,7 @@ require __DIR__ . '/../app/partials/header.php';
 
         if (variants.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = '<td colspan="4" style="text-align:center;color:#aaa;padding:1.25rem 1rem;">No sales found for this product.</td>';
+            tr.innerHTML = '<td colspan="5" style="text-align:center;color:#aaa;padding:1.25rem 1rem;">No sales found for this product.</td>';
             tbody.appendChild(tr);
         } else {
             variants.forEach(function (v) {
@@ -623,6 +626,7 @@ require __DIR__ . '/../app/partials/header.php';
                 tr.innerHTML =
                     '<td>' + escHtml(v.variant_title) + '</td>' +
                     '<td>' + fmtNum(v.total_units) + '</td>' +
+                    '<td>' + fmtNum(v.total_ml) + '</td>' +
                     '<td>' + fmtCurrency(v.total_revenue) + '</td>' +
                     '<td><div class="pct-bar-wrap">' +
                         '<span class="pct-text">' + pct.toFixed(1) + '%</span>' +

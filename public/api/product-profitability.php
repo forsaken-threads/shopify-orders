@@ -24,6 +24,7 @@ declare(strict_types=1);
  *   },
  *   "summary": {
  *     "total_units":   <int>,
+ *     "total_ml":      <int>,
  *     "total_revenue": <float>
  *   },
  *   "variants": [
@@ -31,6 +32,7 @@ declare(strict_types=1);
  *       "variant_id":    null,
  *       "variant_title": "...",
  *       "total_units":   <int>,
+ *       "total_ml":      <int>,
  *       "total_revenue": <float>
  *     }, ...
  *   ],
@@ -77,6 +79,7 @@ $salesStmt = $db->prepare(
     "SELECT
          COALESCE(NULLIF(oli.variant_title, ''), 'Default') AS variant_title,
          SUM(oli.quantity)                                  AS total_units,
+         SUM(oli.quantity * COALESCE(oli.variant_ml, 0))    AS total_ml,
          SUM(oli.quantity * oli.price)                      AS total_revenue
      FROM   order_line_items oli
      JOIN   orders o ON o.id = oli.order_id
@@ -92,12 +95,14 @@ foreach ($salesStmt->fetchAll() as $row) {
         'variant_id'    => null,
         'variant_title' => $row['variant_title'],
         'total_units'   => (int)   $row['total_units'],
+        'total_ml'      => (int)   $row['total_ml'],
         'total_revenue' => (float) $row['total_revenue'],
     ];
 }
 
 // ── Summarise ──────────────────────────────────────────────────────────────────
 $totalUnits   = array_sum(array_column($variants, 'total_units'));
+$totalMl      = array_sum(array_column($variants, 'total_ml'));
 $totalRevenue = array_sum(array_column($variants, 'total_revenue'));
 
 echo json_encode([
@@ -108,6 +113,7 @@ echo json_encode([
     ],
     'summary' => [
         'total_units'   => (int)   $totalUnits,
+        'total_ml'      => (int)   $totalMl,
         'total_revenue' => round((float) $totalRevenue, 2),
     ],
     'variants' => $variants,
