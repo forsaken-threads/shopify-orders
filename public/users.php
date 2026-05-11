@@ -5,7 +5,9 @@ declare(strict_types=1);
  * User management page.
  *
  * Shows every user in the system (active or not) and lets the operator
- * create new accounts and toggle existing ones between active and inactive.
+ * create new accounts, edit display name and email on existing ones,
+ * trigger a password-reset email, and toggle active/inactive.
+ *
  * No delete — keep the row around so historical references to the user_id
  * (e.g. password_resets) stay coherent.
  *
@@ -14,14 +16,21 @@ declare(strict_types=1);
  * audience this internal tool serves today.
  *
  * Form actions (POST, CSRF-protected):
- *   action=create   — add a new user (username + password required; name +
- *                      email optional).
- *   action=toggle   — flip is_active for the given user_id.  Users cannot
- *                      deactivate themselves.
+ *   action=create          — add a new user (username + password required;
+ *                             name + email optional).
+ *   action=update          — change the display name and/or email of an
+ *                             existing user.  Username and password are not
+ *                             touched here — password changes go through the
+ *                             password-reset flow.
+ *   action=reset_password  — email a one-hour single-use reset link to the
+ *                             user; rejected if they have no email on file.
+ *   action=toggle          — flip is_active for the given user_id.  Users
+ *                             cannot deactivate themselves.
  */
 
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../app/password-reset.php';
 
 $me = requireLogin($config);
 $db = getDb($config);
@@ -29,9 +38,12 @@ $db = getDb($config);
 $notice = '';
 $error  = '';
 
-// Sticky form state — populated when a create attempt fails so the user
-// doesn't have to retype the non-secret fields.
-$form = ['username' => '', 'name' => '', 'email' => ''];
+// Sticky form state — populated when a create or update attempt fails so
+// the modal can be re-opened with the non-secret fields still filled in.
+$form = ['id' => '', 'username' => '', 'name' => '', 'email' => ''];
+
+// Set when an error in a modal action should re-open the modal on reload.
+$reopenMode = '';   // 'create' | 'edit' | ''
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = (string) ($_POST['_csrf'] ?? '');
@@ -62,18 +74,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'A user with that username already exists.';
                 } else {
                     $hash = password_hash($password, PASSWORD_DEFAULT);
-                    $insert = $db->prepare(
+                    $db->prepare(
                         "INSERT INTO users (username, password_hash, name, email, preferences, is_active)
                          VALUES (?, ?, ?, ?, '{}', 1)"
-                    );
-                    $insert->execute([
+                    )->execute([
                         $form['username'],
                         $hash,
                         $form['name'],
                         $form['email'] !== '' ? $form['email'] : null,
                     ]);
                     $notice = 'Created user "' . $form['username'] . '".';
-                    $form = ['username' => '', 'name' => '', 'email' => ''];
+                    $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => ''];
+                }
+            }
+            if ($error !== '') {
+                $reopenMode = 'create';
+            }
+        } elseif ($action === 'update') {
+            $form['id']    = (string) (int) ($_POST['user_id'] ?? 0);
+            $form['name']  = trim((string) ($_POST['name']  ?? ''));
+            $form['email'] = trim((string) ($_POST['email'] ?? ''));
+
+            $targetId = (int) $form['id'];
+            if ($targetId <= 0) {
+                $error = 'Invalid user.';
+            } elseif ($form['email'] !== '' && !filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
+                $error = 'Please enter a valid email address.';
+            } else {
+                // Carry the existing username back so the modal title can
+                // still show who's being edited if validation re-fails.
+                $stmt = $db->prepare("SELECT username FROM users WHERE id = ?");
+                $stmt->execute([$targetId]);
+                $form['username'] = (string) ($stmt->fetchColumn() ?: '');
+
+                $db->prepare(
+                    "UPDATE users
+                     SET name = ?, email = ?, updated_at = datetime('now')
+                     WHERE id = ?"
+                )->execute([
+                    $form['name'],
+                    $form['email'] !== '' ? $form['email'] : null,
+                    $targetId,
+                ]);
+                $notice = 'Updated user.';
+                $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => ''];
+            }
+            if ($error !== '') {
+                $reopenMode = 'edit';
+            }
+        } elseif ($action === 'reset_password') {
+            $targetId = (int) ($_POST['user_id'] ?? 0);
+            if ($targetId <= 0) {
+                $error = 'Invalid user.';
+            } else {
+                $stmt = $db->prepare("SELECT id, name, email, is_active FROM users WHERE id = ?");
+                $stmt->execute([$targetId]);
+                $u = $stmt->fetch();
+                $email = trim((string) ($u['email'] ?? ''));
+                if (!$u) {
+                    $error = 'User not found.';
+                } elseif ((int) $u['is_active'] !== 1) {
+                    $error = "Can't reset — that account is inactive.";
+                } elseif ($email === '') {
+                    $error = "Can't reset — that user has no email on file.";
+                } elseif (generateAndEmailReset($config, (int) $u['id'], (string) $u['name'], $email)) {
+                    $notice = 'Sent a reset link to ' . $email . '.';
+                } else {
+                    $error = 'Failed to send the reset email; check the server logs.';
                 }
             }
         } elseif ($action === 'toggle') {
@@ -84,13 +151,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($targetId === (int) $me['id']) {
                 $error = "You can't deactivate your own account.";
             } else {
-                $stmt = $db->prepare(
+                $db->prepare(
                     "UPDATE users
                      SET is_active = CASE is_active WHEN 1 THEN 0 ELSE 1 END,
                          updated_at = datetime('now')
                      WHERE id = ?"
-                );
-                $stmt->execute([$targetId]);
+                )->execute([$targetId]);
                 $notice = 'Updated user status.';
             }
         }
@@ -111,15 +177,23 @@ require __DIR__ . '/../app/partials/header.php';
     .users-main {
         flex: 1;
         padding: 2rem;
-        max-width: 960px;
+        max-width: 85vw;
         margin: 0 auto;
         width: 100%;
     }
 
-    .users-main h1 {
+    .users-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .users-header h1 {
         font-size: 1.4rem;
         font-weight: 700;
-        margin-bottom: 1.5rem;
     }
 
     .notice {
@@ -142,27 +216,167 @@ require __DIR__ . '/../app/partials/header.php';
         margin-bottom: 1.25rem;
     }
 
-    .users-card {
+    .users-table-card {
         background: #fff;
         border-radius: 10px;
         box-shadow: 0 1px 4px rgba(0,0,0,.08);
-        padding: 1.5rem 1.75rem;
-        margin-bottom: 1.5rem;
+        overflow: hidden;
     }
 
-    .users-card h2 {
-        font-size: 1rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
+    .users-table { width: 100%; border-collapse: collapse; }
+
+    .users-table thead { background: #1a1a2e; color: #fff; }
+
+    .users-table th {
+        padding: .75rem 1rem;
+        text-align: left;
+        font-size: .78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        white-space: nowrap;
     }
 
-    .create-grid {
+    .users-table td {
+        padding: .8rem 1rem;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: .88rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    .users-table tbody tr:last-child td { border-bottom: none; }
+
+    .users-table .col-action {
+        width: 1%;
+        text-align: right;
+    }
+
+    .users-table .row-actions {
+        display: inline-flex;
+        gap: .35rem;
+        justify-content: flex-end;
+    }
+
+    .users-table .muted { color: #888; font-style: italic; }
+    .users-table .you   { font-size: .72rem; color: #666; margin-left: .35rem; }
+
+    .status-badge {
+        display: inline-block;
+        padding: .2em .6em;
+        border-radius: 5px;
+        font-size: .72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+
+    .status-active   { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .status-inactive { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+
+    .btn-primary {
+        padding: .5rem 1.1rem;
+        background: #1a1a2e;
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: .82rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s;
+    }
+
+    .btn-primary:hover { background: #2d2d5e; }
+
+    .btn-row {
+        padding: .32rem .75rem;
+        background: transparent;
+        color: #555;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: .78rem;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s, color .15s, border-color .15s;
+    }
+
+    .btn-row:hover:not(:disabled) { background: #f0f0f5; border-color: #c8d0e0; }
+    .btn-row:disabled { opacity: .4; cursor: not-allowed; }
+
+    .btn-row.deactivate:hover:not(:disabled) { background: #fff1f2; color: #b91c1c; border-color: #fca5a5; }
+
+    /* ── Modal ────────────────────────────────────────────────────────────── */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        background: rgba(0,0,0,.55);
+        padding: 8vh 1rem 1rem;
+    }
+
+    .modal-overlay[hidden] { display: none; }
+
+    .modal-box {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.3);
+        width: min(520px, 100%);
+        max-height: 84vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h2 { font-size: 1rem; font-weight: 700; }
+
+    .modal-close {
+        border: none;
+        background: transparent;
+        font-size: 1.4rem;
+        color: #9ca3af;
+        cursor: pointer;
+        padding: 0 .25rem;
+        line-height: 1;
+    }
+
+    .modal-close:hover { color: #1a1a2e; }
+
+    .modal-body {
+        padding: 1.25rem 1.25rem .25rem;
+        overflow-y: auto;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: .5rem;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid #f0f0f0;
+        background: #fafbfc;
+    }
+
+    .modal-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: .9rem 1.1rem;
     }
 
     .field { display: flex; flex-direction: column; }
+    .field.full { grid-column: 1 / -1; }
+    .field[hidden] { display: none; }   /* override .field's display:flex */
 
     .field label {
         font-size: .78rem;
@@ -189,101 +403,41 @@ require __DIR__ . '/../app/partials/header.php';
         box-shadow: 0 0 0 3px rgba(26,26,46,.08);
     }
 
-    .create-actions {
-        margin-top: 1rem;
-        display: flex;
-        justify-content: flex-end;
-    }
+    .field input:disabled { background: #f5f5f8; color: #888; cursor: not-allowed; }
 
-    .btn-primary {
-        padding: .55rem 1.25rem;
-        background: #1a1a2e;
-        color: #fff;
-        border: none;
-        border-radius: 7px;
-        font-size: .85rem;
-        font-weight: 600;
-        font-family: inherit;
-        cursor: pointer;
-        transition: background .15s;
-    }
-
-    .btn-primary:hover { background: #2d2d5e; }
-
-    .users-table-card {
-        background: #fff;
-        border-radius: 10px;
-        box-shadow: 0 1px 4px rgba(0,0,0,.08);
-        overflow: hidden;
-    }
-
-    .users-table { width: 100%; border-collapse: collapse; }
-
-    .users-table thead { background: #1a1a2e; color: #fff; }
-
-    .users-table th {
-        padding: .75rem 1rem;
-        text-align: left;
-        font-size: .78rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: .06em;
-    }
-
-    .users-table td {
-        padding: .8rem 1rem;
-        border-bottom: 1px solid #f0f0f0;
-        font-size: .88rem;
-        vertical-align: middle;
-    }
-
-    .users-table tbody tr:last-child td { border-bottom: none; }
-
-    .users-table .col-action { width: 1%; white-space: nowrap; text-align: right; }
-
-    .users-table .muted { color: #888; font-style: italic; }
-    .users-table .you   { font-size: .72rem; color: #666; margin-left: .35rem; }
-
-    .status-badge {
-        display: inline-block;
-        padding: .2em .6em;
-        border-radius: 5px;
+    .field-readonly-hint {
         font-size: .72rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: .05em;
+        color: #888;
+        margin-top: .25rem;
     }
 
-    .status-active   { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-    .status-inactive { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
-
-    .btn-toggle {
-        padding: .35rem .85rem;
+    .btn-cancel {
+        padding: .5rem 1.1rem;
         background: transparent;
         color: #555;
         border: 1px solid #d1d5db;
-        border-radius: 6px;
-        font-size: .8rem;
+        border-radius: 7px;
+        font-size: .82rem;
         font-weight: 500;
         font-family: inherit;
         cursor: pointer;
-        transition: background .15s, color .15s, border-color .15s;
     }
 
-    .btn-toggle:hover { background: #f0f0f5; border-color: #c8d0e0; }
-    .btn-toggle:disabled { opacity: .4; cursor: not-allowed; }
-
-    .btn-toggle.deactivate:hover { background: #fff1f2; color: #b91c1c; border-color: #fca5a5; }
+    .btn-cancel:hover { background: #f0f0f5; border-color: #c8d0e0; }
 
     @media (max-width: 700px) {
-        .create-grid { grid-template-columns: minmax(0, 1fr); }
-        .users-table .col-email { display: none; }
+        .users-main { max-width: 100%; padding: 1rem; }
+        .modal-grid { grid-template-columns: minmax(0, 1fr); }
+        .users-table .col-email   { display: none; }
         .users-table .col-created { display: none; }
     }
 </style>
 
 <main class="users-main">
-    <h1>Users</h1>
+    <div class="users-header">
+        <h1>Users</h1>
+        <button type="button" class="btn-primary" id="open-create-modal">Add user</button>
+    </div>
 
     <?php if ($notice !== ''): ?>
         <div class="notice"><?= h($notice) ?></div>
@@ -291,44 +445,6 @@ require __DIR__ . '/../app/partials/header.php';
     <?php if ($error !== ''): ?>
         <div class="error"><?= h($error) ?></div>
     <?php endif; ?>
-
-    <form class="users-card" method="post" action="users.php" autocomplete="off">
-        <h2>Add a user</h2>
-
-        <input type="hidden" name="_csrf"  value="<?= h($_SESSION['csrf_token']) ?>">
-        <input type="hidden" name="action" value="create">
-
-        <div class="create-grid">
-            <div class="field">
-                <label for="username">Username</label>
-                <input id="username" name="username" type="text" value="<?= h($form['username']) ?>" required>
-            </div>
-
-            <div class="field">
-                <label for="name">Display name</label>
-                <input id="name" name="name" type="text" value="<?= h($form['name']) ?>" maxlength="100">
-            </div>
-
-            <div class="field">
-                <label for="email">Email</label>
-                <input id="email" name="email" type="email" value="<?= h($form['email']) ?>" maxlength="200">
-            </div>
-
-            <div class="field">
-                <label for="password">Password</label>
-                <input id="password" name="password" type="password" autocomplete="new-password" required>
-            </div>
-
-            <div class="field">
-                <label for="password_confirm">Confirm password</label>
-                <input id="password_confirm" name="password_confirm" type="password" autocomplete="new-password" required>
-            </div>
-        </div>
-
-        <div class="create-actions">
-            <button type="submit" class="btn-primary">Create user</button>
-        </div>
-    </form>
 
     <div class="users-table-card">
         <table class="users-table">
@@ -345,8 +461,9 @@ require __DIR__ . '/../app/partials/header.php';
             <tbody>
                 <?php foreach ($users as $u): ?>
                     <?php
-                        $isSelf   = (int) $u['id'] === (int) $me['id'];
-                        $isActive = (int) $u['is_active'] === 1;
+                        $isSelf    = (int) $u['id'] === (int) $me['id'];
+                        $isActive  = (int) $u['is_active'] === 1;
+                        $hasEmail  = trim((string) ($u['email'] ?? '')) !== '';
                     ?>
                     <tr>
                         <td>
@@ -354,7 +471,7 @@ require __DIR__ . '/../app/partials/header.php';
                             <?php if ($isSelf): ?><span class="you">(you)</span><?php endif; ?>
                         </td>
                         <td><?= $u['name'] !== '' ? h($u['name']) : '<span class="muted">—</span>' ?></td>
-                        <td class="col-email"><?= $u['email'] !== null && $u['email'] !== '' ? h($u['email']) : '<span class="muted">—</span>' ?></td>
+                        <td class="col-email"><?= $hasEmail ? h($u['email']) : '<span class="muted">—</span>' ?></td>
                         <td class="col-created"><?= h((string) $u['created_at']) ?></td>
                         <td>
                             <span class="status-badge status-<?= $isActive ? 'active' : 'inactive' ?>">
@@ -362,16 +479,38 @@ require __DIR__ . '/../app/partials/header.php';
                             </span>
                         </td>
                         <td class="col-action">
-                            <form method="post" action="users.php" style="display:inline">
-                                <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
-                                <input type="hidden" name="action"  value="toggle">
-                                <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
-                                <button type="submit"
-                                        class="btn-toggle<?= $isActive ? ' deactivate' : '' ?>"
-                                        <?= $isSelf ? 'disabled title="You can\'t deactivate your own account."' : '' ?>>
-                                    <?= $isActive ? 'Deactivate' : 'Reactivate' ?>
+                            <div class="row-actions">
+                                <button type="button" class="btn-row js-edit"
+                                        data-id="<?= (int) $u['id'] ?>"
+                                        data-name="<?= h($u['name']) ?>"
+                                        data-email="<?= h((string) $u['email']) ?>"
+                                        data-username="<?= h($u['username']) ?>">
+                                    Edit
                                 </button>
-                            </form>
+
+                                <form method="post" action="users.php" style="display:inline" class="js-reset-form">
+                                    <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                                    <input type="hidden" name="action"  value="reset_password">
+                                    <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                    <button type="submit" class="btn-row"
+                                            <?php if (!$hasEmail): ?>disabled title="No email on file"<?php endif; ?>
+                                            <?php if (!$isActive): ?>disabled title="Account is inactive"<?php endif; ?>
+                                            data-confirm="Send a password-reset link to <?= h((string) $u['email']) ?>?">
+                                        Reset password
+                                    </button>
+                                </form>
+
+                                <form method="post" action="users.php" style="display:inline">
+                                    <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                                    <input type="hidden" name="action"  value="toggle">
+                                    <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                    <button type="submit"
+                                            class="btn-row<?= $isActive ? ' deactivate' : '' ?>"
+                                            <?= $isSelf ? 'disabled title="You can\'t deactivate your own account."' : '' ?>>
+                                        <?= $isActive ? 'Deactivate' : 'Reactivate' ?>
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -379,5 +518,186 @@ require __DIR__ . '/../app/partials/header.php';
         </table>
     </div>
 </main>
+
+<!-- ── Create / Edit modal ──────────────────────────────────────────────── -->
+<div id="user-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2 id="user-modal-title">Add a user</h2>
+            <button type="button" class="modal-close" id="user-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <form id="user-modal-form" method="post" action="users.php" autocomplete="off">
+            <div class="modal-body">
+                <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                <input type="hidden" name="action"  id="user-modal-action"   value="create">
+                <input type="hidden" name="user_id" id="user-modal-user-id" value="">
+
+                <div class="modal-grid">
+                    <div class="field full create-only" id="field-username">
+                        <label for="modal-username">Username</label>
+                        <input id="modal-username" name="username" type="text" value="<?= h($form['username']) ?>">
+                    </div>
+
+                    <div class="field full" id="field-username-readonly" hidden>
+                        <label>Username</label>
+                        <input type="text" id="modal-username-readonly" value="" disabled>
+                        <div class="field-readonly-hint">Usernames can't be changed.</div>
+                    </div>
+
+                    <div class="field">
+                        <label for="modal-name">Display name</label>
+                        <input id="modal-name" name="name" type="text" value="<?= h($form['name']) ?>" maxlength="100">
+                    </div>
+
+                    <div class="field">
+                        <label for="modal-email">Email</label>
+                        <input id="modal-email" name="email" type="email" value="<?= h($form['email']) ?>" maxlength="200">
+                    </div>
+
+                    <div class="field create-only" id="field-password">
+                        <label for="modal-password">Password</label>
+                        <input id="modal-password" name="password" type="password" autocomplete="new-password">
+                    </div>
+
+                    <div class="field create-only" id="field-password-confirm">
+                        <label for="modal-password-confirm">Confirm password</label>
+                        <input id="modal-password-confirm" name="password_confirm" type="password" autocomplete="new-password">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" id="user-modal-cancel">Cancel</button>
+                <button type="submit" class="btn-primary" id="user-modal-submit">Create user</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var modal       = document.getElementById('user-modal');
+    var form        = document.getElementById('user-modal-form');
+    var titleEl     = document.getElementById('user-modal-title');
+    var submitEl    = document.getElementById('user-modal-submit');
+    var actionEl    = document.getElementById('user-modal-action');
+    var userIdEl    = document.getElementById('user-modal-user-id');
+    var nameEl      = document.getElementById('modal-name');
+    var emailEl     = document.getElementById('modal-email');
+    var usernameEl  = document.getElementById('modal-username');
+    var passEl      = document.getElementById('modal-password');
+    var passConfEl  = document.getElementById('modal-password-confirm');
+    var usernameRO  = document.getElementById('modal-username-readonly');
+    var fieldUser   = document.getElementById('field-username');
+    var fieldUserRO = document.getElementById('field-username-readonly');
+    var createOnly  = document.querySelectorAll('.create-only');
+
+    function showCreateOnlyFields(show) {
+        createOnly.forEach(function (el) {
+            el.hidden = !show;
+            // Disable inputs inside hidden sections so they don't get
+            // submitted with the form.
+            el.querySelectorAll('input').forEach(function (inp) {
+                inp.disabled = !show;
+            });
+        });
+    }
+
+    function openCreate(prefill) {
+        titleEl.textContent  = 'Add a user';
+        submitEl.textContent = 'Create user';
+        actionEl.value       = 'create';
+        userIdEl.value       = '';
+
+        fieldUser.hidden   = false;
+        fieldUserRO.hidden = true;
+        showCreateOnlyFields(true);
+
+        usernameEl.value = (prefill && prefill.username) || '';
+        nameEl.value     = (prefill && prefill.name)     || '';
+        emailEl.value    = (prefill && prefill.email)    || '';
+        passEl.value     = '';
+        passConfEl.value = '';
+
+        modal.hidden = false;
+        setTimeout(function () { usernameEl.focus(); }, 30);
+    }
+
+    function openEdit(data) {
+        titleEl.textContent  = 'Edit user';
+        submitEl.textContent = 'Save';
+        actionEl.value       = 'update';
+        userIdEl.value       = data.id || '';
+
+        fieldUser.hidden   = true;
+        fieldUserRO.hidden = false;
+        usernameRO.value   = data.username || '';
+        showCreateOnlyFields(false);
+
+        nameEl.value  = data.name  || '';
+        emailEl.value = data.email || '';
+
+        modal.hidden = false;
+        setTimeout(function () { nameEl.focus(); }, 30);
+    }
+
+    function closeModal() {
+        modal.hidden = true;
+    }
+
+    document.getElementById('open-create-modal').addEventListener('click', function () { openCreate(); });
+    document.getElementById('user-modal-close').addEventListener('click', closeModal);
+    document.getElementById('user-modal-cancel').addEventListener('click', closeModal);
+
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) closeModal();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.hidden) closeModal();
+    });
+
+    // Edit buttons populate the modal from data-* attributes.
+    document.querySelectorAll('.js-edit').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openEdit({
+                id:       btn.dataset.id,
+                username: btn.dataset.username,
+                name:     btn.dataset.name,
+                email:    btn.dataset.email,
+            });
+        });
+    });
+
+    // Reset-password forms: confirm before submitting.
+    document.querySelectorAll('.js-reset-form').forEach(function (frm) {
+        frm.addEventListener('submit', function (e) {
+            var btn = frm.querySelector('button[type=submit]');
+            var msg = btn && btn.dataset.confirm;
+            if (msg && !window.confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // If a server-side error left form state behind, re-open the modal in
+    // the right mode so the user doesn't have to retype anything.
+    <?php if ($reopenMode === 'create'): ?>
+        openCreate({
+            username: <?= json_encode($form['username']) ?>,
+            name:     <?= json_encode($form['name']) ?>,
+            email:    <?= json_encode($form['email']) ?>,
+        });
+    <?php elseif ($reopenMode === 'edit'): ?>
+        openEdit({
+            id:       <?= json_encode($form['id']) ?>,
+            username: <?= json_encode($form['username']) ?>,
+            name:     <?= json_encode($form['name']) ?>,
+            email:    <?= json_encode($form['email']) ?>,
+        });
+    <?php endif; ?>
+}());
+</script>
 
 <?php require __DIR__ . '/../app/partials/footer.php'; ?>

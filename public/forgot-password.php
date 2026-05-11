@@ -20,7 +20,7 @@ declare(strict_types=1);
 
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/auth.php';
-require_once __DIR__ . '/../app/mailer.php';
+require_once __DIR__ . '/../app/password-reset.php';
 
 $submitted        = false;
 $error            = '';
@@ -49,11 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /**
- * Look up the user, mint a one-hour single-use token, and email it.  No-op
- * when the username doesn't match an active account or that account has no
- * email on file.  Intended to run AFTER the response has been flushed so
- * its cost (especially the SMTP send) doesn't reveal whether anything
- * matched.  Any failure is logged, never surfaced to the caller.
+ * Look up the user and dispatch a reset email.  No-op when the username
+ * doesn't match an active account or that account has no email on file.
+ * Intended to run AFTER the response has been flushed so its cost
+ * (especially the SMTP send) doesn't reveal whether anything matched.
+ * Any failure is logged, never surfaced to the caller.
  */
 function processForgotPassword(array $config, string $username): void
 {
@@ -64,94 +64,20 @@ function processForgotPassword(array $config, string $username): void
         );
         $stmt->execute([$username]);
         $row = $stmt->fetch();
-        if (!$row || trim((string) ($row['email'] ?? '')) === '') {
+        if (!$row) {
             return;
         }
-
-        $userId = (int) $row['id'];
-        $email  = (string) $row['email'];
-        $name   = (string) $row['name'];
-
-        // Invalidate any prior unused tokens for this user.
-        $db->prepare("UPDATE password_resets SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL")
-           ->execute([$userId]);
-
-        // Persist only the SHA-256 hash; the raw token leaves only in email.
-        $rawToken  = bin2hex(random_bytes(32));
-        $tokenHash = hash('sha256', $rawToken);
-        $db->prepare(
-            "INSERT INTO password_resets (user_id, token_hash, expires_at)
-             VALUES (?, ?, datetime('now', '+1 hour'))"
-        )->execute([$userId, $tokenHash]);
-
-        $resetUrl = buildResetUrl($config, $rawToken);
-        if (!sendMail(
+        if (!generateAndEmailReset(
             $config,
-            $email,
-            $name,
-            'Reset your Cent Notes password',
-            renderResetEmailHtml($name, $resetUrl),
-            renderResetEmailText($name, $resetUrl),
+            (int)    $row['id'],
+            (string) ($row['name']  ?? ''),
+            (string) ($row['email'] ?? ''),
         )) {
-            error_log('[forgot-password] SMTP send failed for user_id=' . $userId);
+            error_log('[forgot-password] no email on file or SMTP failed for user_id=' . $row['id']);
         }
     } catch (\Throwable $e) {
         error_log('[forgot-password] deferred work failed: ' . $e->getMessage());
     }
-}
-
-/**
- * Build the absolute reset URL.  Uses APP_BASE_URL from config when set;
- * otherwise infers scheme + host from the current request (works for normal
- * deployments but can be wrong behind reverse proxies that don't forward
- * X-Forwarded-Proto, which is why APP_BASE_URL exists).
- */
-function buildResetUrl(array $config, string $rawToken): string
-{
-    $base = (string) ($config['app_base_url'] ?? '');
-    if ($base === '') {
-        $fwd    = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
-        $scheme = $fwd !== ''
-            ? strtolower(explode(',', $fwd)[0])
-            : (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http');
-        $base = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-    }
-    return $base . '/reset-password.php?token=' . urlencode($rawToken);
-}
-
-function renderResetEmailHtml(string $name, string $url): string
-{
-    $greeting = $name !== '' ? 'Hi ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ',' : 'Hi,';
-    $safeUrl  = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-    return <<<HTML
-<!doctype html>
-<html><body style="font-family: system-ui, sans-serif; color: #1a1a2e; line-height: 1.55;">
-<p>{$greeting}</p>
-<p>Someone requested a password reset for your Cent Notes account.  If that
-was you, click the link below to choose a new password.  The link is valid
-for one hour and can only be used once.</p>
-<p><a href="{$safeUrl}" style="display:inline-block; padding:.6rem 1.25rem; background:#1a1a2e; color:#fff; text-decoration:none; border-radius:6px;">Reset password</a></p>
-<p style="font-size: .85rem; color: #666;">Or copy this URL into your browser:<br><a href="{$safeUrl}">{$safeUrl}</a></p>
-<p style="font-size: .85rem; color: #666;">If you didn't request this, you can ignore this email — your password won't change.</p>
-</body></html>
-HTML;
-}
-
-function renderResetEmailText(string $name, string $url): string
-{
-    $greeting = $name !== '' ? "Hi {$name}," : 'Hi,';
-    return <<<TEXT
-{$greeting}
-
-Someone requested a password reset for your Cent Notes account.  If that was
-you, open this link to choose a new password.  It is valid for one hour and
-can only be used once.
-
-{$url}
-
-If you didn't request this, you can ignore this email — your password
-won't change.
-TEXT;
 }
 
 $pageTitle  = 'Forgot password - Cent Notes';
