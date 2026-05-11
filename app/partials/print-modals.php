@@ -540,7 +540,7 @@ var PrintModals = (function () {
             confirmData.append('action', 'confirm');
             if (activePrintForce) confirmData.append('force', '1');
 
-            fetch('api/print-order.php', {
+            fetch(apiUrl('print-order.php'), {
                 method: 'POST',
                 headers: { 'X-CSRF-Token': CSRF_TOKEN },
                 body: confirmData,
@@ -675,7 +675,7 @@ var PrintModals = (function () {
                 confirmData.append('action', 'confirm');
                 if (activePrintForce) confirmData.append('force', '1');
 
-                fetch('api/print-order.php', {
+                fetch(apiUrl('print-order.php'), {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': CSRF_TOKEN },
                     body: confirmData,
@@ -753,7 +753,7 @@ var PrintModals = (function () {
         var controller = new AbortController();
         var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
 
-        fetch('api/print-order.php', {
+        fetch(apiUrl('print-order.php'), {
             method: 'POST',
             headers: { 'X-CSRF-Token': CSRF_TOKEN },
             body: formData,
@@ -843,7 +843,7 @@ var PrintModals = (function () {
         }
 
         printLoading.hidden = false;
-        fetch('api/order-detail.php?id=' + encodeURIComponent(orderId))
+        fetch(apiUrl('order-detail.php?id=') + encodeURIComponent(orderId))
             .then(function (res) {
                 if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
                 return res.json();
@@ -959,7 +959,7 @@ var PrintModals = (function () {
             formData.append('skip_persist', '1');
         }
 
-        fetch('api/print-order.php', {
+        fetch(apiUrl('print-order.php'), {
             method: 'POST',
             headers: { 'X-CSRF-Token': CSRF_TOKEN },
             body: formData,

@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.2.1',
+        'date'    => '2026-05-11',
+        'title'   => 'Fix: API endpoints failing with duplicate getDb() declaration',
+        'notes'   => [
+            'Fixed a fatal error on every /api/* endpoint introduced in 1.2.0, where db.php was loaded twice and PHP refused to redeclare getDb().',
+            'All includes of db.php and auth.php now use require_once so the files cannot be loaded more than once per request.',
+            'Routed the print and order-detail modal fetches through apiUrl() so they work for users whose Basic Auth password contains "@".',
+        ],
+    ],
+    [
         'version' => '1.2.0',
         'date'    => '2026-05-11',
         'title'   => 'Release notifications and per-user accounts',

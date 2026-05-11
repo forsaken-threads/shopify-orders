@@ -35,7 +35,7 @@ declare(strict_types=1);
 $projectRoot = dirname(__DIR__);
 
 $config = require $projectRoot . '/app/config.php';
-require $projectRoot . '/app/db.php';
+require_once $projectRoot . '/app/db.php';
 require $projectRoot . '/app/shopify.php';
 
 // ── Parse arguments ───────────────────────────────────────────────────────────

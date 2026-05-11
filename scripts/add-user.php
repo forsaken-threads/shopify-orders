@@ -21,7 +21,7 @@ if (PHP_SAPI !== 'cli') {
 
 $projectRoot = dirname(__DIR__);
 $config      = require $projectRoot . '/app/config.php';
-require $projectRoot . '/app/db.php';
+require_once $projectRoot . '/app/db.php';
 
 $db = getDb($config);
 

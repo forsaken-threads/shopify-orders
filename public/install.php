@@ -23,7 +23,7 @@ declare(strict_types=1);
  */
 
 $config = require __DIR__ . '/../app/config.php';
-require __DIR__ . '/auth.php';
+require_once __DIR__ . '/auth.php';
 
 requireBasicAuth($config);
 
