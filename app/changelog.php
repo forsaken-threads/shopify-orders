@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.3.0',
+        'date'    => '2026-05-11',
+        'title'   => 'Real login, profile editing, and user management',
+        'notes'   => [
+            'Signing in now uses a proper login form at /login.php instead of the browser\'s HTTP Basic prompt.  Sessions are cookie-based and end when you close the browser; click your name in the header to sign out.',
+            'Forgot your password?  Use the link on the sign-in page — if your account has an email address on file, you\'ll receive a one-hour, single-use reset link.',
+            'New Profile page (header → your name → Profile) lets you update your display name and email, and change your password without going through the reset flow.',
+            'New Users page (header → your name → Users) lets you create new accounts and deactivate ones that no longer need access.  Deactivated accounts are blocked from signing in immediately, not just at session expiry.',
+            'Bootstrap step: existing accounts have no email yet — sign in with your current password and visit Profile to add one before the forgot-password flow can reach you.',
+            'Deploy step: production needs `composer install --no-dev` once after pulling, plus SMTP credentials in env.ini for outgoing reset emails.',
+        ],
+    ],
+    [
         'version' => '1.2.1',
         'date'    => '2026-05-11',
         'title'   => 'Fix: API endpoints failing with duplicate getDb() declaration',
