@@ -4,7 +4,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/auth.php';
 
-requireBasicAuth($config['auth_user'], $config['auth_password']);
+requireBasicAuth($config);
 
 $pageTitle  = 'Reports - Cent Notes';
 $activePage = 'reports';
@@ -511,7 +511,7 @@ require __DIR__ . '/../app/partials/header.php';
         if (searchAbort) searchAbort.abort();
         searchAbort = new AbortController();
 
-        fetch('api/product-search.php?q=' + encodeURIComponent(q), { signal: searchAbort.signal })
+        fetch(apiUrl('product-search.php?q=') + encodeURIComponent(q), { signal: searchAbort.signal })
             .then(r => r.json())
             .then(products => renderDropdown(products))
             .catch(err => {
@@ -562,7 +562,7 @@ require __DIR__ . '/../app/partials/header.php';
         showLoading(true);
         showError('');
 
-        fetch('api/product-profitability.php?product_id=' + encodeURIComponent(product.shopify_product_id))
+        fetch(apiUrl('product-profitability.php?product_id=') + encodeURIComponent(product.shopify_product_id))
             .then(function (r) {
                 if (!r.ok) return r.json().then(d => Promise.reject(d.error || 'Server error'));
                 return r.json();

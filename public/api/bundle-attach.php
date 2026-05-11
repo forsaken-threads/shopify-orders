@@ -21,7 +21,7 @@ $config = require __DIR__ . '/../../app/config.php';
 require __DIR__ . '/../../app/db.php';
 require __DIR__ . '/../auth.php';
 
-requireBasicAuth($config['auth_user'], $config['auth_password']);
+requireBasicAuth($config);
 
 header('Content-Type: application/json');
 

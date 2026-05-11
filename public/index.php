@@ -4,9 +4,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/auth.php';
 
-$isLoggedIn = isset($_SERVER['PHP_AUTH_USER'])
-    && hash_equals($config['auth_user'],     $_SERVER['PHP_AUTH_USER'])
-    && hash_equals($config['auth_password'], $_SERVER['PHP_AUTH_PW'] ?? '');
+$isLoggedIn = currentUser($config) !== null;
 
 $pageTitle  = 'Home - Cent Notes';
 $activePage = null;

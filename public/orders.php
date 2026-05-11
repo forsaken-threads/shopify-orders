@@ -5,7 +5,7 @@ $config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/../app/db.php';
 require __DIR__ . '/auth.php';
 
-requireBasicAuth($config['auth_user'], $config['auth_password']);
+requireBasicAuth($config);
 
 $db = getDb($config);
 
@@ -751,7 +751,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             // Fetch order detail from API.
             var contentEl = document.getElementById('detail-content-' + orderId);
 
-            fetch('api/order-detail.php?id=' + encodeURIComponent(orderId))
+            fetch(apiUrl('order-detail.php?id=') + encodeURIComponent(orderId))
                 .then(function (res) {
                     if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
                     return res.json();
@@ -793,7 +793,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
 
         // Not yet fetched — load on demand.
         modalLoad.hidden = false;
-        fetch('api/order-detail.php?id=' + encodeURIComponent(orderId))
+        fetch(apiUrl('order-detail.php?id=') + encodeURIComponent(orderId))
             .then(function (res) {
                 if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || 'Server error'); });
                 return res.json();
@@ -885,7 +885,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             var body = new URLSearchParams();
             body.append('id', id);
 
-            fetch('api/archive-order.php', {
+            fetch(apiUrl('archive-order.php'), {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/x-www-form-urlencoded',
@@ -946,7 +946,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             var body = new URLSearchParams();
             body.append('id', id);
 
-            fetch('api/set-printed.php', {
+            fetch(apiUrl('set-printed.php'), {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/x-www-form-urlencoded',
@@ -985,7 +985,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             var body = new URLSearchParams();
             body.append('id', id);
 
-            fetch('api/revert-to-pending.php', {
+            fetch(apiUrl('revert-to-pending.php'), {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/x-www-form-urlencoded',
@@ -1024,7 +1024,7 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
             var body = new URLSearchParams();
             body.append('id', id);
 
-            fetch('api/unarchive-order.php', {
+            fetch(apiUrl('unarchive-order.php'), {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/x-www-form-urlencoded',

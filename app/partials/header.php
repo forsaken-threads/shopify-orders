@@ -249,6 +249,168 @@ function h(mixed $v): string
             .navbar-search-input { width: 120px; }
         }
 
+        /* ── Release bell ── */
+        .navbar-bell {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            margin-left: .5rem;
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,.7);
+            cursor: pointer;
+            border-radius: 6px;
+            flex-shrink: 0;
+            transition: background .15s, color .15s;
+        }
+
+        .navbar-bell:hover { background: rgba(255,255,255,.1); color: #fff; }
+
+        .navbar-bell svg {
+            width: 1.05rem;
+            height: 1.05rem;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .navbar-bell-dot {
+            position: absolute;
+            top: .25rem;
+            right: .25rem;
+            width: .55rem;
+            height: .55rem;
+            background: #e53e3e;
+            border-radius: 50%;
+            border: 2px solid #1a1a2e;
+            display: none;
+        }
+
+        .navbar-bell.has-unseen .navbar-bell-dot { display: block; }
+
+        .navbar-user {
+            margin-left: -.15rem;
+            font-size: .82rem;
+            font-weight: 500;
+            color: rgba(255,255,255,.75);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 700px) {
+            .navbar-user { display: none; }
+        }
+
+        /* ── Release modal ── */
+        .release-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            background: rgba(0,0,0,.55);
+            padding: 8vh 1rem 1rem;
+        }
+
+        .release-overlay[hidden] { display: none; }
+
+        .release-box {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.3);
+            width: min(640px, 100%);
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .release-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .release-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1a1a2e;
+        }
+
+        .release-close {
+            border: none;
+            background: transparent;
+            font-size: 1.25rem;
+            color: #9ca3af;
+            cursor: pointer;
+            padding: 0 .25rem;
+            line-height: 1;
+        }
+
+        .release-close:hover { color: #1a1a2e; }
+
+        .release-body {
+            overflow-y: auto;
+            padding: 1rem 1.25rem 1.25rem;
+        }
+
+        .release-entry { padding: .85rem 0; border-bottom: 1px solid #f0f0f0; }
+        .release-entry:last-child { border-bottom: none; }
+        .release-entry.is-current { background: #fafbff; margin: 0 -1.25rem; padding: .85rem 1.25rem; }
+
+        .release-entry-head {
+            display: flex;
+            align-items: baseline;
+            gap: .6rem;
+            margin-bottom: .35rem;
+        }
+
+        .release-entry-version {
+            font-size: .9rem;
+            font-weight: 700;
+            color: #1a1a2e;
+        }
+
+        .release-entry-current-tag {
+            font-size: .65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: #1a1a2e;
+            background: #fde68a;
+            padding: .1em .45em;
+            border-radius: 4px;
+        }
+
+        .release-entry-date { font-size: .75rem; color: #888; margin-left: auto; }
+        .release-entry-title { font-size: .85rem; color: #444; margin-bottom: .35rem; }
+
+        .release-entry-notes {
+            list-style: disc;
+            padding-left: 1.25rem;
+            font-size: .82rem;
+            color: #333;
+            line-height: 1.55;
+        }
+
+        .release-entry-notes li { margin: .15rem 0; }
+
+        .release-empty,
+        .release-loading {
+            padding: 2rem 1rem;
+            text-align: center;
+            color: #9ca3af;
+            font-size: .85rem;
+        }
+
         /* ── Main content area ── */
         .main {
             flex: 1;
@@ -562,6 +724,20 @@ var APP_TIMEZONE = <?= json_encode($config['display_timezone'] ?? 'America/Detro
 var CSRF_TOKEN = <?= json_encode($_SESSION['csrf_token'] ?? '') ?>;
 
 /**
+ * Build an absolute URL for an API endpoint, scoped to the current origin.
+ *
+ * Relative fetch URLs are resolved against document.URL, which inherits any
+ * userinfo (user:password@) present there.  fetch() rejects URLs with
+ * embedded credentials with a synchronous TypeError, which doesn't even
+ * show up as a network request.  Building against location.origin strips
+ * the userinfo while keeping same-origin (and the browser still attaches
+ * cached Basic Auth from the credential store).
+ */
+function apiUrl(path) {
+    return window.location.origin + '/api/' + path;
+}
+
+/**
  * Escape a value for safe insertion into HTML.
  * Handles null/undefined gracefully.
  */
@@ -627,6 +803,26 @@ function toggleAccordion(cardId) {
     <div class="navbar-search">
         <input type="text" class="navbar-search-input" id="navbar-search-trigger" placeholder="Search orders…" readonly>
     </div>
+    <?php
+    $appVersion       = (string) ($config['app_version'] ?? '');
+    $sessionUser      = $_SESSION['user'] ?? null;
+    $lastVersionSeen  = (string) ($sessionUser['preferences']['last_version_seen'] ?? '');
+    $hasUnseenRelease = $appVersion !== '' && $appVersion !== $lastVersionSeen;
+    ?>
+    <button type="button"
+            class="navbar-bell<?= $hasUnseenRelease ? ' has-unseen' : '' ?>"
+            id="navbar-bell"
+            aria-label="What's new"
+            title="What's new">
+        <svg viewBox="0 0 24 24">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        </svg>
+        <span class="navbar-bell-dot"></span>
+    </button>
+    <?php $userName = (string) ($sessionUser['name'] ?? ''); if ($userName !== ''): ?>
+    <span class="navbar-user" title="<?= h($userName) ?>"><?= h($userName) ?></span>
+    <?php endif; ?>
     <?php endif; ?>
 </nav>
 
@@ -747,7 +943,7 @@ function toggleAccordion(cardId) {
         resultsEl.innerHTML = '<div class="search-loading"><div class="spinner"></div> Searching…</div>';
 
         debounceId = setTimeout(function () {
-            fetch('api/order-search.php?q=' + encodeURIComponent(q))
+            fetch(apiUrl('order-search.php?q=' + encodeURIComponent(q)))
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
                     if (!data || data.length === 0) {
@@ -780,6 +976,117 @@ function toggleAccordion(cardId) {
                     resultItems = [];
                 });
         }, 250);
+    });
+}());
+</script>
+
+<!-- ── Release / Changelog Modal ───────────────────────────────────────── -->
+<div id="release-modal" class="release-overlay" hidden>
+    <div class="release-box">
+        <div class="release-header">
+            <h2>What's new</h2>
+            <button type="button" class="release-close" id="release-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="release-body" id="release-body">
+            <div class="release-loading"><div class="spinner"></div></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var bell      = document.getElementById('navbar-bell');
+    var overlay   = document.getElementById('release-modal');
+    var closeBtn  = document.getElementById('release-close');
+    var bodyEl    = document.getElementById('release-body');
+    var APP_VERSION = <?= json_encode($appVersion) ?>;
+    var loaded    = false;
+
+    if (!bell || !overlay) return;
+
+    function openModal() {
+        overlay.hidden = false;
+        if (!loaded) {
+            loadChangelog();
+        }
+        markSeen();
+    }
+
+    function closeModal() {
+        overlay.hidden = true;
+    }
+
+    function loadChangelog() {
+        fetch(apiUrl('changelog.php'), { credentials: 'same-origin' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                loaded = true;
+                renderChangelog(data);
+            })
+            .catch(function () {
+                bodyEl.innerHTML = '<div class="release-empty">Failed to load changelog.</div>';
+            });
+    }
+
+    function renderChangelog(data) {
+        var entries = (data && data.entries) || [];
+        if (entries.length === 0) {
+            bodyEl.innerHTML = '<div class="release-empty">No release notes yet.</div>';
+            return;
+        }
+        var current = data.current_version || '';
+        var html = '';
+        entries.forEach(function (entry) {
+            var isCurrent = entry.version === current;
+            html += '<div class="release-entry' + (isCurrent ? ' is-current' : '') + '">';
+            html += '<div class="release-entry-head">';
+            html += '<span class="release-entry-version">v' + escHtml(entry.version) + '</span>';
+            if (isCurrent) {
+                html += '<span class="release-entry-current-tag">Current</span>';
+            }
+            html += '<span class="release-entry-date">' + escHtml(entry.date || '') + '</span>';
+            html += '</div>';
+            if (entry.title) {
+                html += '<div class="release-entry-title">' + escHtml(entry.title) + '</div>';
+            }
+            if (Array.isArray(entry.notes) && entry.notes.length) {
+                html += '<ul class="release-entry-notes">';
+                entry.notes.forEach(function (note) {
+                    html += '<li>' + escHtml(note) + '</li>';
+                });
+                html += '</ul>';
+            }
+            html += '</div>';
+        });
+        bodyEl.innerHTML = html;
+    }
+
+    function markSeen() {
+        if (!bell.classList.contains('has-unseen') || !APP_VERSION) return;
+        var body = 'version=' + encodeURIComponent(APP_VERSION);
+        fetch(apiUrl('mark-version-seen.php'), {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/x-www-form-urlencoded',
+                'X-CSRF-Token':  CSRF_TOKEN,
+            },
+            body: body,
+        }).then(function () {
+            bell.classList.remove('has-unseen');
+        }).catch(function () {
+            // Leave badge alone; user will see it again next page load.
+        });
+    }
+
+    bell.addEventListener('click', openModal);
+    closeBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeModal();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !overlay.hidden) closeModal();
     });
 }());
 </script>

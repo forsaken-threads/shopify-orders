@@ -193,4 +193,44 @@ $pdo->exec(<<<'SQL'
     );
 SQL);
 
+// ── Users ────────────────────────────────────────────────────────────────────
+//
+// Auth is backed by this table.  password_hash holds a password_hash() output
+// (verified with password_verify()).  preferences is a JSON blob — currently
+// only tracks last_version_seen for the header release modal, but extensible.
+//
+// On a fresh install the existing env.ini AUTH_USER/AUTH_PASSWORD pair is
+// seeded as the first user, named "Anjela Freeman".  After that, env.ini auth
+// values are ignored; further accounts are added via scripts/add-user.php.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS users (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        username      TEXT    NOT NULL UNIQUE,
+        password_hash TEXT    NOT NULL,
+        name          TEXT    NOT NULL DEFAULT '',
+        preferences   TEXT    NOT NULL DEFAULT '{}',
+        created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+        updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+SQL);
+
+$existingUsers = (int) $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+if ($existingUsers === 0) {
+    $seedUser = (string) (getenv('AUTH_USER') ?: '');
+    $seedPass = (string) (getenv('AUTH_PASSWORD') ?: '');
+    if ($seedUser !== '' && $seedPass !== '') {
+        $hash = password_hash($seedPass, PASSWORD_DEFAULT);
+        $insert = $pdo->prepare(
+            "INSERT INTO users (username, password_hash, name, preferences)
+             VALUES (?, ?, ?, ?)"
+        );
+        $insert->execute([$seedUser, $hash, 'Anjela Freeman', '{}']);
+        echo "Seeded user '{$seedUser}' (Anjela Freeman) from env.ini AUTH_USER/AUTH_PASSWORD.\n";
+    } else {
+        echo "No env.ini AUTH_USER/AUTH_PASSWORD found; skipped seeding users.\n";
+        echo "Run scripts/add-user.php to add the first user.\n";
+    }
+}
+
 echo "Migration complete.\n";

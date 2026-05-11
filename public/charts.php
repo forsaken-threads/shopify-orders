@@ -4,7 +4,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/auth.php';
 
-requireBasicAuth($config['auth_user'], $config['auth_password']);
+requireBasicAuth($config);
 
 // Build the list of selectable years: 2024 through the prior calendar year.
 $currentYear = (int) date('Y');
@@ -488,7 +488,7 @@ require __DIR__ . '/../app/partials/header.php';
         const volMin = volMinInput.value !== '' ? parseInt(volMinInput.value, 10) : null;
         const volMax = volMaxInput.value !== '' ? parseInt(volMaxInput.value, 10) : null;
 
-        let url = 'api/ml-revenue.php?period=' + encodeURIComponent(period);
+        let url = apiUrl('ml-revenue.php?period=') + encodeURIComponent(period);
         if (volMin !== null && !isNaN(volMin)) url += '&vol_min=' + volMin;
         if (volMax !== null && !isNaN(volMax)) url += '&vol_max=' + volMax;
 
@@ -714,7 +714,7 @@ require __DIR__ . '/../app/partials/header.php';
 
     function loadChart() {
         var period = periodSelect.value;
-        var url = 'api/fulfillments-per-day.php?period=' + encodeURIComponent(period);
+        var url = apiUrl('fulfillments-per-day.php?period=') + encodeURIComponent(period);
 
         showLoading(true);
         showError('');

@@ -13,8 +13,11 @@ declare(strict_types=1);
  * SHOPIFY_API_SECRET      API secret for your Shopify app (used for OAuth token acquisition).
  * SHOPIFY_SHOP_DOMAIN     Your store domain, e.g. your-store.myshopify.com.
  * SHOPIFY_API_VERSION     Pinned Admin API version, e.g. 2025-01.
- * AUTH_USER               Username for the orders and download pages.
- * AUTH_PASSWORD           Password for the orders and download pages.
+ * AUTH_USER               Seed username for the first user, read once by
+ *                         scripts/migrate.php into the users table.  After the
+ *                         seed runs, auth is database-backed and this value is
+ *                         ignored.
+ * AUTH_PASSWORD           Seed password for the first user; see AUTH_USER.
  *
  * The Admin API access token is NOT stored in env.ini. It is obtained once via
  * install.php (OAuth) and persisted in shopify.ini at the project root.
@@ -47,6 +50,11 @@ if (is_file($shopifyIniPath)) {
 
 return [
     'db_path'                => __DIR__ . '/../orders.sqlite',
+    // Current application version.  Bumped per commit when there are
+    // user-visible changes worth recording in app/changelog.php.  The header
+    // bell icon shows an unseen-changes badge when this differs from the
+    // signed-in user's preferences.last_version_seen.
+    'app_version'            => '1.2.0',
     'shopify_webhook_secret' => (string) (getenv('SHOPIFY_WEBHOOK_SECRET') ?: ''),
     'shopify_api_key'        => (string) (getenv('SHOPIFY_API_KEY')        ?: ''),
     'shopify_api_secret'     => (string) (getenv('SHOPIFY_API_SECRET')     ?: ''),
@@ -54,8 +62,6 @@ return [
     'shopify_api_version'    => (string) (getenv('SHOPIFY_API_VERSION')    ?: '2025-01'),
     'shopify_access_token'   => $shopifyAccessToken,
     'shopify_ini_path'       => $shopifyIniPath,
-    'auth_user'              => (string) (getenv('AUTH_USER')              ?: 'admin'),
-    'auth_password'          => (string) (getenv('AUTH_PASSWORD')          ?: 'changeme'),
     // Environment name; when not "production" it is displayed in the header
     // bar so non-prod deployments are visually distinct.
     'app_env'                => (string) (getenv('APP_ENV')                ?: 'production'),

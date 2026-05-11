@@ -5,7 +5,7 @@ $config = require __DIR__ . '/../app/config.php';
 require __DIR__ . '/../app/db.php';
 require __DIR__ . '/auth.php';
 
-requireBasicAuth($config['auth_user'], $config['auth_password']);
+requireBasicAuth($config);
 
 $db = getDb($config);
 
@@ -644,7 +644,7 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     function refreshEditComponents() {
-        return fetch('api/bundle-components.php?id=' + encodeURIComponent(editBundleId))
+        return fetch(apiUrl('bundle-components.php?id=') + encodeURIComponent(editBundleId))
             .then(r => r.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -677,7 +677,7 @@ require __DIR__ . '/../app/partials/header.php';
     function handleDetach(componentId, btn) {
         btn.disabled = true;
         btn.textContent = 'Detaching…';
-        postForm('api/bundle-detach.php', { bundle_id: editBundleId, component_id: componentId })
+        postForm(apiUrl('bundle-detach.php'), { bundle_id: editBundleId, component_id: componentId })
             .then(data => {
                 if (!data.ok) throw new Error(data.error || 'Detach failed');
                 editDirty = true;
@@ -691,7 +691,7 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     function handleAttach(componentId) {
-        postForm('api/bundle-attach.php', { bundle_id: editBundleId, component_id: componentId })
+        postForm(apiUrl('bundle-attach.php'), { bundle_id: editBundleId, component_id: componentId })
             .then(data => {
                 if (!data.ok) throw new Error(data.error || 'Attach failed');
                 editDirty = true;
@@ -709,7 +709,7 @@ require __DIR__ . '/../app/partials/header.php';
         const btn = document.getElementById('be-btn-complete');
         btn.disabled = true;
         btn.textContent = 'Saving…';
-        postForm('api/bundle-mark-complete.php', { id: editBundleId })
+        postForm(apiUrl('bundle-mark-complete.php'), { id: editBundleId })
             .then(data => {
                 if (!data.ok) throw new Error(data.error || 'Mark complete failed');
                 reloadPreservingAccordion();
@@ -742,7 +742,7 @@ require __DIR__ . '/../app/partials/header.php';
         input:      editSearch,
         dropdown:   editDropdown,
         wrap:       editSearchWrap,
-        buildUrl:   q => 'api/product-search.php?mode=attach&bundle_id=' + encodeURIComponent(editBundleId) +
+        buildUrl:   q => apiUrl('product-search.php?mode=attach&bundle_id=') + encodeURIComponent(editBundleId) +
                          '&q=' + encodeURIComponent(q),
         onSelect:   product => handleAttach(product.id),
         renderItem: p => {
@@ -767,7 +767,7 @@ require __DIR__ . '/../app/partials/header.php';
             const title = btn.dataset.bundleTitle;
             btn.disabled = true;
             btn.textContent = 'Reopening…';
-            postForm('api/bundle-reopen.php', { id: id })
+            postForm(apiUrl('bundle-reopen.php'), { id: id })
                 .then(data => {
                     if (!data.ok) throw new Error(data.error || 'Reopen failed');
                     openEditModal(id, title, true);
@@ -813,7 +813,7 @@ require __DIR__ . '/../app/partials/header.php';
         bpLoading.hidden = false;
         openModal(bundlePrintModal);
 
-        fetch('api/bundle-components.php?id=' + encodeURIComponent(bundle.id) + '&include_variants=1')
+        fetch(apiUrl('bundle-components.php?id=') + encodeURIComponent(bundle.id) + '&include_variants=1')
             .then(r => r.json())
             .then(data => {
                 if (data.error) throw new Error(data.error);
@@ -1106,7 +1106,7 @@ require __DIR__ . '/../app/partials/header.php';
         const controller = new AbortController();
         const timeoutId  = setTimeout(() => controller.abort(), timeoutMs);
 
-        fetch('api/print-order.php', {
+        fetch(apiUrl('print-order.php'), {
             method:  'POST',
             headers: { 'X-CSRF-Token': CSRF_TOKEN },
             body:    formData,
