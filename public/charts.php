@@ -2,9 +2,9 @@
 declare(strict_types=1);
 
 $config = require __DIR__ . '/../app/config.php';
-require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../app/permissions.php';
 
-requireLogin($config);
+requirePermission($config, 'charts');
 
 // Build the list of selectable years: 2024 through the prior calendar year.
 $currentYear = (int) date('Y');

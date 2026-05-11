@@ -23,9 +23,9 @@ declare(strict_types=1);
  */
 
 $config = require __DIR__ . '/../app/config.php';
-require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../app/permissions.php';
 
-requireLogin($config);
+requirePermission($config, 'shopify_install');
 
 $apiKey     = $config['shopify_api_key'];
 $apiSecret  = $config['shopify_api_secret'];

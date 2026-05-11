@@ -11,9 +11,9 @@ declare(strict_types=1);
  * No delete — keep the row around so historical references to the user_id
  * (e.g. password_resets) stay coherent.
  *
- * No admin gating in this phase; that arrives with the role system.  For now
- * every signed-in user can manage the user list, matching the small, trusted
- * audience this internal tool serves today.
+ * Gated on the 'manage_users' permission (admin and root only).  Lower-tier
+ * roles can't even see the page exists — the menu link is hidden and a
+ * direct visit redirects to /index.php via requirePermission().
  *
  * Form actions (POST, CSRF-protected):
  *   action=create          — add a new user (username + password required;
@@ -29,10 +29,10 @@ declare(strict_types=1);
  */
 
 $config = require __DIR__ . '/../app/config.php';
-require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../app/permissions.php';
 require_once __DIR__ . '/../app/password-reset.php';
 
-$me = requireLogin($config);
+$me = requirePermission($config, 'manage_users');
 $db = getDb($config);
 
 $notice = '';

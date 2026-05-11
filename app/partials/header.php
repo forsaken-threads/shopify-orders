@@ -12,6 +12,8 @@ declare(strict_types=1);
 $activePage ??= null;
 $hideNav    ??= false;
 
+require_once __DIR__ . '/../permissions.php';
+
 function h(mixed $v): string
 {
     return htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -848,12 +850,22 @@ function toggleAccordion(cardId) {
     <?php $appEnv = (string) ($config['app_env'] ?? 'production'); if (strtolower($appEnv) !== 'production'): ?>
     <span class="navbar-env"><?= h(strtoupper($appEnv)) ?></span>
     <?php endif; ?>
-    <?php if (!$hideNav): ?>
+    <?php if (!$hideNav):
+        $navUser = $_SESSION['user'] ?? ['role' => 'basic_employee'];
+    ?>
     <ul class="navbar-nav">
-        <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>
-        <li><a class="nav-link<?= $activePage === 'reports' ? ' active' : '' ?>" href="reports.php">Reports</a></li>
-        <li><a class="nav-link<?= $activePage === 'charts'  ? ' active' : '' ?>" href="charts.php">Charts</a></li>
-        <li><a class="nav-link<?= $activePage === 'bundles' ? ' active' : '' ?>" href="bundles.php">Bundles</a></li>
+        <?php if (userCan($navUser, 'orders')): ?>
+            <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>
+        <?php endif; ?>
+        <?php if (userCan($navUser, 'reports')): ?>
+            <li><a class="nav-link<?= $activePage === 'reports' ? ' active' : '' ?>" href="reports.php">Reports</a></li>
+        <?php endif; ?>
+        <?php if (userCan($navUser, 'charts')): ?>
+            <li><a class="nav-link<?= $activePage === 'charts'  ? ' active' : '' ?>" href="charts.php">Charts</a></li>
+        <?php endif; ?>
+        <?php if (userCan($navUser, 'bundles')): ?>
+            <li><a class="nav-link<?= $activePage === 'bundles' ? ' active' : '' ?>" href="bundles.php">Bundles</a></li>
+        <?php endif; ?>
     </ul>
     <div class="navbar-search">
         <input type="text" class="navbar-search-input" id="navbar-search-trigger" placeholder="Search orders…" readonly>
@@ -883,7 +895,9 @@ function toggleAccordion(cardId) {
     </button>
     <div class="user-menu" id="navbar-user-menu" role="menu" hidden>
         <a href="profile.php" role="menuitem">Profile</a>
-        <a href="users.php"   role="menuitem">Users</a>
+        <?php if (userCan($navUser, 'manage_users')): ?>
+            <a href="users.php" role="menuitem">Users</a>
+        <?php endif; ?>
         <div class="user-menu-sep"></div>
         <a href="logout.php"  role="menuitem">Sign out</a>
     </div>

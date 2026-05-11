@@ -2,9 +2,9 @@
 declare(strict_types=1);
 
 $config = require __DIR__ . '/../app/config.php';
-require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../app/permissions.php';
 
-requireLogin($config);
+requirePermission($config, 'reports');
 
 $pageTitle  = 'Reports - Cent Notes';
 $activePage = 'reports';
