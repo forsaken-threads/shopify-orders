@@ -31,7 +31,7 @@ $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../auth.php';
 require_once __DIR__ . '/../../app/db.php';
 
-requireBasicAuth($config);
+requireApiLogin($config);
 
 header('Content-Type: application/json');
 

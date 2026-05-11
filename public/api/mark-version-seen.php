@@ -17,7 +17,7 @@ $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/db.php';
 require_once __DIR__ . '/../auth.php';
 
-$user = requireBasicAuth($config);
+$user = requireApiLogin($config);
 
 header('Content-Type: application/json');
 

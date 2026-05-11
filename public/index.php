@@ -99,7 +99,7 @@ require __DIR__ . '/../app/partials/header.php';
             Manage and review your Shopify orders in one place.
         </p>
         <?php if (!$isLoggedIn): ?>
-        <a class="btn-login" href="orders.php">Log in to view orders</a>
+        <a class="btn-login" href="login.php">Sign in</a>
         <?php endif; ?>
     </div>
 </main>

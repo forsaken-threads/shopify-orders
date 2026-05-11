@@ -294,12 +294,67 @@ function h(mixed $v): string
         .navbar-bell.has-unseen .navbar-bell-dot { display: block; }
 
         .navbar-user {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: .3rem;
             margin-left: -.15rem;
+            padding: .3rem .55rem;
             font-size: .82rem;
             font-weight: 500;
+            font-family: inherit;
             color: rgba(255,255,255,.75);
+            background: transparent;
+            border: none;
+            border-radius: 6px;
             white-space: nowrap;
             flex-shrink: 0;
+            cursor: pointer;
+            transition: background .15s, color .15s;
+        }
+
+        .navbar-user:hover { background: rgba(255,255,255,.1); color: #fff; }
+
+        .navbar-user-caret {
+            width: .65rem;
+            height: .65rem;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            opacity: .7;
+        }
+
+        .user-menu {
+            position: absolute;
+            top: calc(100% + .35rem);
+            right: 0;
+            min-width: 10rem;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.18);
+            padding: .35rem 0;
+            z-index: 1500;
+        }
+
+        .user-menu[hidden] { display: none; }
+
+        .user-menu a {
+            display: block;
+            padding: .5rem 1rem;
+            font-size: .85rem;
+            color: #1a1a2e;
+            text-decoration: none;
+            transition: background .1s;
+        }
+
+        .user-menu a:hover { background: #f0f2f5; }
+
+        .user-menu-sep {
+            height: 1px;
+            background: #f0f0f0;
+            margin: .3rem 0;
         }
 
         @media (max-width: 700px) {
@@ -821,10 +876,51 @@ function toggleAccordion(cardId) {
         <span class="navbar-bell-dot"></span>
     </button>
     <?php $userName = (string) ($sessionUser['name'] ?? ''); if ($userName !== ''): ?>
-    <span class="navbar-user" title="<?= h($userName) ?>"><?= h($userName) ?></span>
+    <button type="button" class="navbar-user" id="navbar-user-trigger"
+            aria-haspopup="menu" aria-expanded="false" title="<?= h($userName) ?>">
+        <span><?= h($userName) ?></span>
+        <svg class="navbar-user-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div class="user-menu" id="navbar-user-menu" role="menu" hidden>
+        <a href="profile.php" role="menuitem">Profile</a>
+        <a href="users.php"   role="menuitem">Users</a>
+        <div class="user-menu-sep"></div>
+        <a href="logout.php"  role="menuitem">Sign out</a>
+    </div>
     <?php endif; ?>
     <?php endif; ?>
 </nav>
+
+<?php if (!$hideNav): ?>
+<script>
+(function () {
+    'use strict';
+    var trigger = document.getElementById('navbar-user-trigger');
+    var menu    = document.getElementById('navbar-user-menu');
+    if (!trigger || !menu) return;
+
+    function close() {
+        menu.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+    function open() {
+        menu.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (menu.hidden) open(); else close();
+    });
+    document.addEventListener('click', function (e) {
+        if (!menu.hidden && !menu.contains(e.target) && e.target !== trigger) close();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !menu.hidden) close();
+    });
+}());
+</script>
+<?php endif; ?>
 
 <?php if (!$hideNav): ?>
 <!-- ── Search Modal ────────────────────────────────────────────────────── -->

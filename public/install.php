@@ -25,7 +25,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/auth.php';
 
-requireBasicAuth($config);
+requireLogin($config);
 
 $apiKey     = $config['shopify_api_key'];
 $apiSecret  = $config['shopify_api_secret'];
