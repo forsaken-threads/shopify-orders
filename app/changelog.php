@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.6.0',
+        'date'    => '2026-05-12',
+        'title'   => 'Hourly rates and payroll tracking',
+        'notes'   => [
+            'Users page (admin and root): the Edit user modal now has a "Paid hourly" checkbox.  When on, a new Rates button on the row opens a modal for managing that user\'s rate history.  Each rate row records a dollar amount and an effective date range; either side of the range can be left blank for "no lower bound" / "still in effect".',
+            'Rate effective dates are constrained to pay-week-start days.  The date picker only allows the configured weekday (e.g. Saturday); any direct-typed date snaps back to the pay week containing it.  Overlapping ranges are rejected with a message that names the pay weeks in conflict.',
+            'Time cards page: when viewing an approved week for an hourly user, a new "Pay" cell shows the dollar amount earned (total hours × the rate in effect that week) and a Mark paid button records the payment.  Marking paid stores the amount along with who marked it and when, and locks the week from being re-opened.',
+            'Paid weeks render as a green approval bar with the paid-by / paid-at info instead of the amber "approved" bar.  Hourly users with no rate on file for the viewed week see a clear warning and the Mark paid button is disabled until the rate is set.',
+            'Time cards employee dropdown is now display-name-only (with [inactive] suffix where applicable), and the page pane is widened to match Orders / Reports / Users.',
+            'Deploy step: production needs `php scripts/migrate.php` for the new hourly_rates table and the paid_at / paid_by / amount_paid columns on timecard_approvals.',
+        ],
+    ],
+    [
         'version' => '1.5.1',
         'date'    => '2026-05-12',
         'title'   => 'Responsive header for narrower screens',
