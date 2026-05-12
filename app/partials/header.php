@@ -46,18 +46,22 @@ function h(mixed $v): string
             position: relative;
         }
 
-        /* Non-production environment indicator, centered across the navbar. */
+        /* Non-production environment indicator, floating in the lower-left of the viewport. */
         .navbar-env {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
+            position: fixed;
+            left: 1rem;
+            bottom: 1rem;
+            background: rgba(26, 26, 46, .85);
             color: #fbbf24;
-            font-size: .95rem;
+            font-size: .8rem;
             font-weight: 700;
             letter-spacing: .12em;
+            padding: .4rem .7rem;
+            border-radius: 6px;
+            opacity: .7;
             pointer-events: none;
             white-space: nowrap;
+            z-index: 1000;
         }
 
         .navbar-brand {
@@ -87,6 +91,70 @@ function h(mixed $v): string
 
         .nav-link:hover,
         .nav-link.active { color: #fff; }
+
+        /* ── Hamburger (shown at < 1200px) ── */
+        .navbar-hamburger {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 2.25rem;
+            height: 2.25rem;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: rgba(255,255,255,.75);
+            cursor: pointer;
+            border-radius: 6px;
+            flex-shrink: 0;
+            transition: background .15s, color .15s;
+        }
+
+        .navbar-hamburger:hover { background: rgba(255,255,255,.1); color: #fff; }
+
+        .navbar-hamburger svg {
+            width: 1.3rem;
+            height: 1.3rem;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+        }
+
+        .navbar-menu-drawer {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #1a1a2e;
+            border-top: 1px solid rgba(255,255,255,.08);
+            box-shadow: 0 8px 18px rgba(0,0,0,.25);
+            padding: .35rem 0;
+            z-index: 1500;
+        }
+
+        .navbar-menu-drawer[hidden] { display: none; }
+
+        .navbar-menu-drawer a {
+            display: block;
+            padding: .7rem 1.5rem;
+            font-size: .9rem;
+            font-weight: 500;
+            color: rgba(255,255,255,.7);
+            text-decoration: none;
+            letter-spacing: .02em;
+            transition: background .1s, color .1s;
+        }
+
+        .navbar-menu-drawer a:hover,
+        .navbar-menu-drawer a.active {
+            background: rgba(255,255,255,.06);
+            color: #fff;
+        }
+
+        @media (max-width: 1199px) {
+            .navbar-nav { display: none; }
+            .navbar-hamburger { display: inline-flex; }
+        }
 
         /* ── Navbar search trigger ── */
         .navbar-search {
@@ -247,10 +315,6 @@ function h(mixed $v): string
             color: #555;
         }
 
-        @media (max-width: 700px) {
-            .navbar-search-input { width: 120px; }
-        }
-
         /* ── Release bell ── */
         .navbar-bell {
             position: relative;
@@ -357,10 +421,6 @@ function h(mixed $v): string
             height: 1px;
             background: #f0f0f0;
             margin: .3rem 0;
-        }
-
-        @media (max-width: 700px) {
-            .navbar-user { display: none; }
         }
 
         /* ── Release modal ── */
@@ -672,11 +732,32 @@ function h(mixed $v): string
         .footer { text-align: center; padding: 1.5rem; font-size: .75rem; color: #aaa; }
 
         @media (max-width: 700px) {
+            /* Scale all rem-based sizes down proportionally to avoid awkward wraps. */
+            html { font-size: 87.5%; }
+
             .main { padding: 1rem; }
-            .navbar { padding: .75rem 1rem; }
             .hide-mobile { display: none; }
             .pagination { justify-content: center; }
             .pagination-info { width: 100%; text-align: center; }
+
+            /* Stack navbar: brand+hamburger / search / bell+user-menu */
+            .navbar {
+                padding: .75rem 1rem;
+                flex-wrap: wrap;
+                gap: .6rem 1rem;
+            }
+            .navbar-hamburger { margin-left: auto; }
+            .navbar-search {
+                order: 1;
+                width: 100%;
+                margin-left: 0;
+            }
+            .navbar-search-input { width: 100%; }
+            .navbar-bell {
+                order: 2;
+                margin-left: auto;
+            }
+            .navbar-user { order: 2; }
         }
 
         /* ── Accordion (shared by charts.php and reports.php) ── */
@@ -852,27 +933,33 @@ function toggleAccordion(cardId) {
     <?php endif; ?>
     <?php if (!$hideNav):
         $navUser = $_SESSION['user'] ?? ['role' => 'basic_employee'];
+
+        $navItems = [];
+        if (userCan($navUser, 'orders'))           { $navItems[] = ['key' => 'orders',    'label' => 'Orders',     'href' => 'orders.php']; }
+        if (userCan($navUser, 'reports'))          { $navItems[] = ['key' => 'reports',   'label' => 'Reports',    'href' => 'reports.php']; }
+        if (userCan($navUser, 'charts'))           { $navItems[] = ['key' => 'charts',    'label' => 'Charts',     'href' => 'charts.php']; }
+        if (userCan($navUser, 'bundles'))          { $navItems[] = ['key' => 'bundles',   'label' => 'Bundles',    'href' => 'bundles.php']; }
+        if (userCan($navUser, 'clock_in_out'))     { $navItems[] = ['key' => 'clock',     'label' => 'Clock',      'href' => 'clock.php']; }
+        if (userCan($navUser, 'manage_timecards')) { $navItems[] = ['key' => 'timecards', 'label' => 'Time cards', 'href' => 'timecards.php']; }
     ?>
     <ul class="navbar-nav">
-        <?php if (userCan($navUser, 'orders')): ?>
-            <li><a class="nav-link<?= $activePage === 'orders'  ? ' active' : '' ?>" href="orders.php">Orders</a></li>
-        <?php endif; ?>
-        <?php if (userCan($navUser, 'reports')): ?>
-            <li><a class="nav-link<?= $activePage === 'reports' ? ' active' : '' ?>" href="reports.php">Reports</a></li>
-        <?php endif; ?>
-        <?php if (userCan($navUser, 'charts')): ?>
-            <li><a class="nav-link<?= $activePage === 'charts'  ? ' active' : '' ?>" href="charts.php">Charts</a></li>
-        <?php endif; ?>
-        <?php if (userCan($navUser, 'bundles')): ?>
-            <li><a class="nav-link<?= $activePage === 'bundles' ? ' active' : '' ?>" href="bundles.php">Bundles</a></li>
-        <?php endif; ?>
-        <?php if (userCan($navUser, 'clock_in_out')): ?>
-            <li><a class="nav-link<?= $activePage === 'clock' ? ' active' : '' ?>" href="clock.php">Clock</a></li>
-        <?php endif; ?>
-        <?php if (userCan($navUser, 'manage_timecards')): ?>
-            <li><a class="nav-link<?= $activePage === 'timecards' ? ' active' : '' ?>" href="timecards.php">Time cards</a></li>
-        <?php endif; ?>
+        <?php foreach ($navItems as $item): ?>
+            <li><a class="nav-link<?= $activePage === $item['key'] ? ' active' : '' ?>" href="<?= h($item['href']) ?>"><?= h($item['label']) ?></a></li>
+        <?php endforeach; ?>
     </ul>
+    <?php if (!empty($navItems)): ?>
+    <button type="button" class="navbar-hamburger" id="navbar-hamburger"
+            aria-label="Menu" aria-expanded="false" aria-controls="navbar-menu-drawer">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+    </button>
+    <div class="navbar-menu-drawer" id="navbar-menu-drawer" hidden>
+        <?php foreach ($navItems as $item): ?>
+            <a class="nav-link<?= $activePage === $item['key'] ? ' active' : '' ?>" href="<?= h($item['href']) ?>"><?= h($item['label']) ?></a>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
     <div class="navbar-search">
         <?php // Empty wrapper acts as a flex spacer (margin-left: auto) when
               // the user can't search, so the bell/user-menu stay right-aligned. ?>
@@ -941,6 +1028,33 @@ function toggleAccordion(cardId) {
     });
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !menu.hidden) close();
+    });
+}());
+
+(function () {
+    'use strict';
+    var trigger = document.getElementById('navbar-hamburger');
+    var drawer  = document.getElementById('navbar-menu-drawer');
+    if (!trigger || !drawer) return;
+
+    function close() {
+        drawer.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+    function open() {
+        drawer.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (drawer.hidden) open(); else close();
+    });
+    document.addEventListener('click', function (e) {
+        if (!drawer.hidden && !drawer.contains(e.target) && e.target !== trigger && !trigger.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !drawer.hidden) close();
     });
 }());
 </script>
