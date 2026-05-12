@@ -125,6 +125,49 @@ function formatHours(int $minutes): string
 }
 
 /**
+ * Convert a UTC timestamp string ('YYYY-MM-DD HH:MM:SS') into the
+ * 'YYYY-MM-DDTHH:MM' string an <input type="datetime-local"> wants.
+ * Useful for pre-populating the punch-edit modal.
+ */
+function utcToLocalInput(string $utcDt, DateTimeZone $tz): string
+{
+    return (new DateTimeImmutable($utcDt))
+        ->setTimezone($tz)
+        ->format('Y-m-d\TH:i');
+}
+
+/**
+ * Inverse of utcToLocalInput.  Returns the UTC timestamp string suitable
+ * for inserting into time_punches, or null if the input is empty or
+ * unparsable.  Browser sends a value like "2026-05-11T09:14" with no
+ * timezone — we treat it as wall-clock time in the display timezone.
+ */
+function localInputToUtc(string $input, DateTimeZone $tz): ?string
+{
+    $input = trim($input);
+    if ($input === '') {
+        return null;
+    }
+    try {
+        return (new DateTimeImmutable($input, $tz))
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->format('Y-m-d H:i:s');
+    } catch (\Exception) {
+        return null;
+    }
+}
+
+/**
+ * Return the local-date string ('YYYY-MM-DD') of the pay-period week
+ * that the given UTC instant falls into.  Used to check whether an
+ * edited punch is moving into / out of an approved week.
+ */
+function weekStartDateFor(string $utcDt, DateTimeZone $tz, string $payWeekStart): string
+{
+    return weekStartLocalDate(new DateTimeImmutable($utcDt), $tz, $payWeekStart);
+}
+
+/**
  * Open a new shift for $userId.  Caller must verify there's no existing
  * open punch and that the user's current pay week isn't approved.
  */

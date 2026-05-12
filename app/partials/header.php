@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * Set these variables before require-ing this file:
  *   string      $pageTitle  — rendered in <title>
- *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | 'clock' | null (highlights the active nav link)
+ *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | 'clock' | 'timecards' | null (highlights the active nav link)
  */
 
 $activePage ??= null;
@@ -868,6 +868,9 @@ function toggleAccordion(cardId) {
         <?php endif; ?>
         <?php if (userCan($navUser, 'clock_in_out')): ?>
             <li><a class="nav-link<?= $activePage === 'clock' ? ' active' : '' ?>" href="clock.php">Clock</a></li>
+        <?php endif; ?>
+        <?php if (userCan($navUser, 'manage_timecards')): ?>
+            <li><a class="nav-link<?= $activePage === 'timecards' ? ' active' : '' ?>" href="timecards.php">Time cards</a></li>
         <?php endif; ?>
     </ul>
     <div class="navbar-search">
