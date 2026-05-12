@@ -66,10 +66,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = (string) ($_POST['action'] ?? '');
 
         // Every action needs a target user.  Resolve and hierarchy-check it.
+        // preferences is included so mark_paid can read the paid_hourly flag.
         $targetId = (int) ($_POST['target_user_id'] ?? $_POST['user_id'] ?? 0);
         $target   = null;
         if ($targetId > 0) {
-            $stmt = $db->prepare("SELECT id, username, name, role FROM users WHERE id = ?");
+            $stmt = $db->prepare("SELECT id, username, name, role, preferences FROM users WHERE id = ?");
             $stmt->execute([$targetId]);
             $target = $stmt->fetch() ?: null;
         }
@@ -96,10 +97,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($weekDate === '') {
                 $error = 'Missing week.';
             } else {
-                $db->prepare(
-                    "DELETE FROM timecard_approvals WHERE user_id = ? AND week_start_date = ?"
-                )->execute([(int) $target['id'], $weekDate]);
-                $notice = 'Week re-opened.';
+                // Paid weeks are terminal — can't be unapproved.  This guard
+                // is the only barrier; the UI hides the button when paid.
+                $stmt = $db->prepare(
+                    "SELECT paid_at FROM timecard_approvals WHERE user_id = ? AND week_start_date = ?"
+                );
+                $stmt->execute([(int) $target['id'], $weekDate]);
+                $row = $stmt->fetch();
+                if ($row && !empty($row['paid_at'])) {
+                    $error = "Can't re-open — this week is already marked paid.";
+                } else {
+                    $db->prepare(
+                        "DELETE FROM timecard_approvals WHERE user_id = ? AND week_start_date = ?"
+                    )->execute([(int) $target['id'], $weekDate]);
+                    $notice = 'Week re-opened.';
+                }
+            }
+        } elseif ($action === 'mark_paid') {
+            $weekDate = (string) ($_POST['week_start_date'] ?? '');
+            if ($weekDate === '') {
+                $error = 'Missing week.';
+            } elseif (!isUserPaidHourly($target)) {
+                $error = "That user isn't flagged as paid hourly.";
+            } else {
+                $stmt = $db->prepare(
+                    "SELECT paid_at FROM timecard_approvals
+                     WHERE user_id = ? AND week_start_date = ?"
+                );
+                $stmt->execute([(int) $target['id'], $weekDate]);
+                $appr = $stmt->fetch();
+
+                if (!$appr) {
+                    $error = "Week isn't approved yet.";
+                } elseif (!empty($appr['paid_at'])) {
+                    $error = 'Week was already marked paid.';
+                } else {
+                    $rate = effectiveRateFor($db, (int) $target['id'], $weekDate);
+                    if ($rate === null) {
+                        $error = "No hourly rate is on file for the pay week of {$weekDate}.  Set one on the Users page first.";
+                    } else {
+                        // Re-derive the week bounds from the posted week_start_date so
+                        // we're not relying on any earlier $weekStartUtc/$weekEndUtc
+                        // computation drifting from the action target.
+                        $wStartUtc = (new DateTimeImmutable($weekDate . ' 00:00:00', $tz))
+                            ->setTimezone(new DateTimeZone('UTC'));
+                        $wEndUtc   = $wStartUtc->modify('+7 days');
+
+                        $stmtP = $db->prepare(
+                            "SELECT clock_in, clock_out
+                             FROM time_punches
+                             WHERE user_id = ? AND clock_in >= ? AND clock_in < ?"
+                        );
+                        $stmtP->execute([
+                            (int) $target['id'],
+                            $wStartUtc->format('Y-m-d H:i:s'),
+                            $wEndUtc->format('Y-m-d H:i:s'),
+                        ]);
+                        $weekPunches = $stmtP->fetchAll();
+                        $minutes = totalMinutes($weekPunches, $nowUtc);
+                        $amount  = round($minutes / 60.0 * (float) $rate['hourly_rate'], 2);
+
+                        $db->prepare(
+                            "UPDATE timecard_approvals
+                                SET paid_at = datetime('now'), paid_by = ?, amount_paid = ?
+                              WHERE user_id = ? AND week_start_date = ?"
+                        )->execute([
+                            (int) $me['id'],
+                            $amount,
+                            (int) $target['id'],
+                            $weekDate,
+                        ]);
+                        $notice = 'Marked paid.';
+                    }
+                }
             }
         } elseif (in_array($action, ['add_punch', 'update_punch', 'delete_punch'], true)) {
             // Punch-editing actions all share the same approved-week guard.
@@ -226,9 +296,10 @@ if ($notice === '' && !empty($_SESSION['flash_notice'])) {
 
 // Every user with the clock_in_out permission is a candidate, which today
 // is every active user; show inactive users too so historical cards
-// remain reachable.
+// remain reachable.  preferences pulled here too so isUserPaidHourly()
+// can decide whether to surface the pay / mark-paid UI.
 $allUsers = $db->query(
-    "SELECT id, username, name, role, is_active
+    "SELECT id, username, name, role, is_active, preferences
      FROM users
      ORDER BY is_active DESC, username COLLATE NOCASE ASC"
 )->fetchAll();
@@ -237,10 +308,13 @@ $allUsers = $db->query(
 // POST guard so the UI never offers an action that would be rejected.
 $pickableUsers = array_values(array_filter($allUsers, fn ($u) => roleRank((string) $u['role']) <= $myRank));
 
-$target     = null;
-$punches    = [];
-$approval   = null;
-$weekTotal  = 0;
+$target           = null;
+$punches          = [];
+$approval         = null;
+$weekTotal        = 0;
+$targetPaidHourly = false;
+$weekRate         = null;       // hourly_rates row covering this week (or null)
+$weekAmount       = null;       // computed week pay (float) when rate available
 
 if ($selectedUser > 0) {
     foreach ($pickableUsers as $u) {
@@ -267,13 +341,24 @@ if ($target !== null) {
     $weekTotal = totalMinutes($punches, $nowUtc);
 
     $stmt = $db->prepare(
-        "SELECT a.approved_at, a.approved_by, u.username AS approver_username, u.name AS approver_name
+        "SELECT a.approved_at, a.approved_by, a.paid_at, a.paid_by, a.amount_paid,
+                au.username AS approver_username, au.name AS approver_name,
+                pu.username AS payer_username,    pu.name AS payer_name
          FROM timecard_approvals a
-         LEFT JOIN users u ON u.id = a.approved_by
+         LEFT JOIN users au ON au.id = a.approved_by
+         LEFT JOIN users pu ON pu.id = a.paid_by
          WHERE a.user_id = ? AND a.week_start_date = ?"
     );
     $stmt->execute([(int) $target['id'], $weekStartDate]);
     $approval = $stmt->fetch() ?: null;
+
+    $targetPaidHourly = isUserPaidHourly($target);
+    if ($targetPaidHourly) {
+        $weekRate = effectiveRateFor($db, (int) $target['id'], $weekStartDate);
+        if ($weekRate !== null) {
+            $weekAmount = round($weekTotal / 60.0 * (float) $weekRate['hourly_rate'], 2);
+        }
+    }
 }
 
 // Prev / next week (in local time, then re-snapped through weekStartUtc).
@@ -305,7 +390,7 @@ require __DIR__ . '/../app/partials/header.php';
     .tc-main {
         flex: 1;
         padding: 2rem;
-        max-width: 960px;
+        max-width: 85vw;
         margin: 0 auto;
         width: 100%;
     }
@@ -429,12 +514,15 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     .approval-bar.is-approved { background: #fff7ed; border: 1px solid #fdba74; }
+    .approval-bar.is-paid     { background: #ecfdf5; border: 1px solid #6ee7b7; }
 
     .approval-bar .total {
         font-size: 1.4rem;
         font-weight: 700;
         font-variant-numeric: tabular-nums;
     }
+
+    .approval-bar .total.warn { color: #b45309; }
 
     .approval-bar .total-label {
         font-size: .8rem;
@@ -444,6 +532,14 @@ require __DIR__ . '/../app/partials/header.php';
         color: #666;
     }
 
+    .approval-bar .rate-hint {
+        font-size: .72rem;
+        color: #777;
+        margin-top: .15rem;
+    }
+
+    .approval-bar .rate-hint.warn { color: #b45309; }
+
     .approval-state {
         font-size: .85rem;
         color: #444;
@@ -452,6 +548,9 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     .approval-state.locked { color: #9a3412; }
+    .approval-state.paid   { color: #047857; }
+
+    .approval-actions { display: inline-flex; gap: .5rem; flex-wrap: wrap; }
 
     .btn-primary {
         padding: .5rem 1.1rem;
@@ -629,8 +728,9 @@ require __DIR__ . '/../app/partials/header.php';
             <select name="user_id" id="user_id" onchange="document.getElementById('picker-form').submit()">
                 <option value="">— Pick an employee —</option>
                 <?php foreach ($pickableUsers as $u): ?>
+                    <?php $optLabel = trim((string) $u['name']) !== '' ? (string) $u['name'] : (string) $u['username']; ?>
                     <option value="<?= (int) $u['id'] ?>"<?= $selectedUser === (int) $u['id'] ? ' selected' : '' ?>>
-                        <?= h($u['username']) ?><?= $u['name'] !== '' ? ' (' . h($u['name']) . ')' : '' ?><?= (int) $u['is_active'] !== 1 ? ' [inactive]' : '' ?>
+                        <?= h($optLabel) ?><?= (int) $u['is_active'] !== 1 ? ' [inactive]' : '' ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -655,15 +755,56 @@ require __DIR__ . '/../app/partials/header.php';
     <?php if ($target === null): ?>
         <div class="empty-pick">Pick an employee above to view their time card.</div>
     <?php else: ?>
-        <?php $isApproved = $approval !== null; ?>
+        <?php
+            $isApproved = $approval !== null;
+            $isPaid     = $isApproved && !empty($approval['paid_at']);
+            // Hidden inputs shared by every action form in the approval bar.
+            $hiddens = static function () use ($target, $weekStartDate): string {
+                ob_start();
+                ?>
+                <input type="hidden" name="_csrf"           value="<?= h($_SESSION['csrf_token']) ?>">
+                <input type="hidden" name="user_id"         value="<?= (int) $target['id'] ?>">
+                <input type="hidden" name="target_user_id"  value="<?= (int) $target['id'] ?>">
+                <input type="hidden" name="week"            value="<?= h($weekStartDate) ?>">
+                <input type="hidden" name="week_start_date" value="<?= h($weekStartDate) ?>">
+                <?php
+                return (string) ob_get_clean();
+            };
+        ?>
 
-        <div class="approval-bar<?= $isApproved ? ' is-approved' : '' ?>">
+        <div class="approval-bar<?= $isPaid ? ' is-paid' : ($isApproved ? ' is-approved' : '') ?>">
             <div>
                 <div class="total-label">Total this week</div>
                 <div class="total"><?= h(formatHours($weekTotal)) ?></div>
             </div>
-            <div class="approval-state<?= $isApproved ? ' locked' : '' ?>">
-                <?php if ($isApproved): ?>
+
+            <?php if ($targetPaidHourly): ?>
+                <div>
+                    <?php if ($isPaid): ?>
+                        <div class="total-label">Paid</div>
+                        <div class="total">$<?= h(number_format((float) $approval['amount_paid'], 2)) ?></div>
+                    <?php elseif ($weekRate !== null): ?>
+                        <div class="total-label">Pay (this week)</div>
+                        <div class="total">$<?= h(number_format((float) $weekAmount, 2)) ?></div>
+                        <div class="rate-hint">at $<?= h(number_format((float) $weekRate['hourly_rate'], 2)) ?>/hr</div>
+                    <?php else: ?>
+                        <div class="total-label">Pay (this week)</div>
+                        <div class="total warn">—</div>
+                        <div class="rate-hint warn">No rate on file for this pay week</div>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
+            <div class="approval-state<?= $isPaid ? ' paid' : ($isApproved ? ' locked' : '') ?>">
+                <?php if ($isPaid):
+                    $payerLabel = trim((string) ($approval['payer_name'] ?? '')) !== ''
+                        ? (string) $approval['payer_name']
+                        : (string) ($approval['payer_username'] ?? 'someone'); ?>
+                    Paid by
+                    <strong><?= h($payerLabel) ?></strong>
+                    on <?= h((new DateTimeImmutable($approval['paid_at']))->setTimezone($tz)->format('M j, g:i A')) ?>.
+                    Locked from further changes.
+                <?php elseif ($isApproved): ?>
                     Approved by
                     <strong><?= h($approval['approver_name'] !== '' ? $approval['approver_name'] : $approval['approver_username']) ?></strong>
                     on <?= h((new DateTimeImmutable($approval['approved_at']))->setTimezone($tz)->format('M j, g:i A')) ?>.
@@ -672,20 +813,32 @@ require __DIR__ . '/../app/partials/header.php';
                     Week is open for edits.  Approve to lock it from any further changes.
                 <?php endif; ?>
             </div>
-            <form method="post" action="timecards.php">
-                <input type="hidden" name="_csrf"           value="<?= h($_SESSION['csrf_token']) ?>">
-                <input type="hidden" name="action"          value="<?= $isApproved ? 'unapprove' : 'approve' ?>">
-                <input type="hidden" name="user_id"         value="<?= (int) $target['id'] ?>">
-                <input type="hidden" name="target_user_id"  value="<?= (int) $target['id'] ?>">
-                <input type="hidden" name="week"            value="<?= h($weekStartDate) ?>">
-                <input type="hidden" name="week_start_date" value="<?= h($weekStartDate) ?>">
-                <button type="submit" class="<?= $isApproved ? 'btn-cancel' : 'btn-primary' ?>"
-                        data-confirm="<?= $isApproved
-                            ? 'Re-open this week for editing?'
-                            : 'Approve this week and lock it from further edits?' ?>">
-                    <?= $isApproved ? 'Re-open week' : 'Approve week' ?>
-                </button>
-            </form>
+
+            <?php if (!$isPaid): ?>
+                <div class="approval-actions">
+                    <?php if ($isApproved && $targetPaidHourly): ?>
+                        <form method="post" action="timecards.php">
+                            <?= $hiddens() ?>
+                            <input type="hidden" name="action" value="mark_paid">
+                            <button type="submit" class="btn-primary"
+                                    <?php if ($weekRate === null): ?>disabled title="No rate on file for this pay week"<?php endif; ?>
+                                    data-confirm="Mark this week paid for $<?= $weekAmount !== null ? h(number_format((float) $weekAmount, 2)) : '0.00' ?>?  This locks the week permanently.">
+                                Mark paid
+                            </button>
+                        </form>
+                    <?php endif; ?>
+                    <form method="post" action="timecards.php">
+                        <?= $hiddens() ?>
+                        <input type="hidden" name="action" value="<?= $isApproved ? 'unapprove' : 'approve' ?>">
+                        <button type="submit" class="<?= $isApproved ? 'btn-cancel' : 'btn-primary' ?>"
+                                data-confirm="<?= $isApproved
+                                    ? 'Re-open this week for editing?'
+                                    : 'Approve this week and lock it from further edits?' ?>">
+                            <?= $isApproved ? 'Re-open week' : 'Approve week' ?>
+                        </button>
+                    </form>
+                </div>
+            <?php endif; ?>
         </div>
 
         <div class="punches-card">

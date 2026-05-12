@@ -31,20 +31,34 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/../app/permissions.php';
 require_once __DIR__ . '/../app/password-reset.php';
+require_once __DIR__ . '/../app/timeclock.php';
 
 $me     = requirePermission($config, 'manage_users');
 $db     = getDb($config);
 $myRank = userRoleRank($me);
+$tz     = new DateTimeZone((string) ($config['display_timezone'] ?? 'UTC'));
+$pws    = (string) $config['pay_week_start'];
 
 $notice = '';
 $error  = '';
 
 // Sticky form state — populated when a create or update attempt fails so
 // the modal can be re-opened with the non-secret fields still filled in.
-$form = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee'];
+$form = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee', 'paid_hourly' => false];
 
 // Set when an error in a modal action should re-open the modal on reload.
 $reopenMode = '';   // 'create' | 'edit' | ''
+
+// When set, the page renders with the hourly-rates modal auto-opened for
+// this user.  Populated either by ?manage_rates=<id> in the URL or by a
+// rate-management POST handler that wants the modal re-opened.
+$manageRatesUserId = 0;
+// When set inside the rates modal, render this rate row as an inline edit
+// form instead of static cells.  Cleared after a successful update_rate.
+$editRateId        = 0;
+// Sticky form state for the rates modal's add / edit row when validation
+// fails server-side and we want to re-render with the entered values.
+$rateForm          = ['id' => 0, 'mode' => '', 'from' => '', 'to' => '', 'rate' => '', 'error' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = (string) ($_POST['_csrf'] ?? '');
@@ -101,12 +115,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $form['id']    = (string) (int) ($_POST['user_id'] ?? 0);
             $form['name']  = trim((string) ($_POST['name']  ?? ''));
             $form['email'] = trim((string) ($_POST['email'] ?? ''));
+            $form['paid_hourly'] = isset($_POST['paid_hourly']);
             $postedRole    = isset($_POST['role']) ? (string) $_POST['role'] : null;
 
             $targetId = (int) $form['id'];
 
-            // Look up the target so we can enforce hierarchy rules.
-            $stmt = $db->prepare("SELECT id, username, role FROM users WHERE id = ?");
+            // Look up the target so we can enforce hierarchy rules.  Also
+            // grab preferences so we can merge the paid_hourly flag rather
+            // than blow away other keys (e.g. last_version_seen).
+            $stmt = $db->prepare("SELECT id, username, role, preferences FROM users WHERE id = ?");
             $stmt->execute([$targetId]);
             $target = $stmt->fetch() ?: null;
 
@@ -137,22 +154,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $form['role'] = $finalRole;
 
                 if ($error === '') {
+                    $prefs = json_decode((string) ($target['preferences'] ?? '{}'), true);
+                    if (!is_array($prefs)) {
+                        $prefs = [];
+                    }
+                    $prefs['paid_hourly'] = (bool) $form['paid_hourly'];
+
                     $db->prepare(
                         "UPDATE users
-                         SET name = ?, email = ?, role = ?, updated_at = datetime('now')
+                         SET name = ?, email = ?, role = ?, preferences = ?, updated_at = datetime('now')
                          WHERE id = ?"
                     )->execute([
                         $form['name'],
                         $form['email'] !== '' ? $form['email'] : null,
                         $finalRole,
+                        json_encode($prefs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                         $targetId,
                     ]);
                     $notice = 'Updated user.';
-                    $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee'];
+                    $form   = ['id' => '', 'username' => '', 'name' => '', 'email' => '', 'role' => 'basic_employee', 'paid_hourly' => false];
                 }
             }
             if ($error !== '') {
                 $reopenMode = 'edit';
+            }
+        } elseif (in_array($action, ['add_rate', 'update_rate', 'delete_rate'], true)) {
+            // Rate-management actions all share the same target-user guard and
+            // PRG back to ?manage_rates=<id> so the modal stays open.
+            $targetId = (int) ($_POST['user_id'] ?? 0);
+
+            $stmt = $db->prepare("SELECT id, name, username, role, preferences FROM users WHERE id = ?");
+            $stmt->execute([$targetId]);
+            $target = $stmt->fetch() ?: null;
+
+            if ($targetId <= 0 || $target === null) {
+                $error = 'Invalid user.';
+            } elseif (roleRank((string) $target['role']) > $myRank) {
+                $error = "You can't manage a user whose role is higher than yours.";
+            } elseif (!isUserPaidHourly($target)) {
+                $error = "That user isn't flagged as paid hourly.";
+            } else {
+                $rateId = (int) ($_POST['rate_id'] ?? 0);
+
+                if ($action === 'delete_rate') {
+                    $db->prepare("DELETE FROM hourly_rates WHERE id = ? AND user_id = ?")
+                       ->execute([$rateId, $targetId]);
+                    $notice = 'Rate removed.';
+                } else {
+                    // add_rate or update_rate.  Validate and snap dates.
+                    $rateRaw = trim((string) ($_POST['hourly_rate']    ?? ''));
+                    $fromRaw = trim((string) ($_POST['effective_from'] ?? ''));
+                    $toRaw   = trim((string) ($_POST['effective_to']   ?? ''));
+
+                    $rateForm = [
+                        'id'    => $rateId,
+                        'mode'  => $action === 'update_rate' ? 'edit' : 'add',
+                        'from'  => $fromRaw,
+                        'to'    => $toRaw,
+                        'rate'  => $rateRaw,
+                        'error' => '',
+                    ];
+
+                    $rateVal = is_numeric($rateRaw) ? (float) $rateRaw : -1.0;
+
+                    $fromSnap = $fromRaw !== '' ? snapToPayWeekStart($fromRaw, $tz, $pws) : null;
+                    $toSnap   = $toRaw   !== '' ? snapToPayWeekStart($toRaw,   $tz, $pws) : null;
+
+                    if ($rateVal <= 0) {
+                        $rateForm['error'] = 'Hourly rate must be greater than zero.';
+                    } elseif ($fromSnap !== null && $toSnap !== null && $fromSnap > $toSnap) {
+                        $rateForm['error'] = 'Effective-from week must be on or before effective-to week.';
+                    } elseif (hourlyRateRangeOverlaps($db, $targetId, $fromSnap, $toSnap, $action === 'update_rate' ? $rateId : null)) {
+                        // Surface the snapped values so it's obvious why
+                        // "Apr 26" (a Sunday) conflicts with a rate that
+                        // ends "Apr 25" — both fall in the same pay-week.
+                        $fromLabel = $fromSnap !== null ? (new DateTimeImmutable($fromSnap))->format('M j, Y') : 'the beginning of time';
+                        $toLabel   = $toSnap   !== null ? (new DateTimeImmutable($toSnap))->format('M j, Y')   : 'open-ended';
+                        $rateForm['error'] = "That range (pay weeks {$fromLabel} → {$toLabel}) overlaps an existing rate.  Adjust the other row's dates first.";
+                    } else {
+                        if ($action === 'add_rate') {
+                            $db->prepare(
+                                "INSERT INTO hourly_rates (user_id, hourly_rate, effective_from, effective_to)
+                                 VALUES (?, ?, ?, ?)"
+                            )->execute([$targetId, $rateVal, $fromSnap, $toSnap]);
+                            $notice = 'Rate added.';
+                        } else {
+                            $upd = $db->prepare(
+                                "UPDATE hourly_rates
+                                    SET hourly_rate = ?, effective_from = ?, effective_to = ?
+                                  WHERE id = ? AND user_id = ?"
+                            );
+                            $upd->execute([$rateVal, $fromSnap, $toSnap, $rateId, $targetId]);
+                            if ($upd->rowCount() === 0) {
+                                $rateForm['error'] = 'Rate not found.';
+                            } else {
+                                $notice = 'Rate updated.';
+                            }
+                        }
+                    }
+
+                    if ($rateForm['error'] !== '') {
+                        // Stay on the rates modal with the form re-rendered.
+                        $error              = $rateForm['error'];
+                        $manageRatesUserId  = $targetId;
+                        if ($action === 'update_rate') {
+                            $editRateId = $rateId;
+                        }
+                    }
+                }
+            }
+
+            // PRG back to the rates modal on success so the admin keeps editing.
+            if ($error === '' && $notice !== '') {
+                $_SESSION['flash_notice'] = $notice;
+                header('Location: /users.php?' . http_build_query(['manage_rates' => $targetId]));
+                exit;
             }
         } elseif ($action === 'reset_password') {
             $targetId = (int) ($_POST['user_id'] ?? 0);
@@ -206,11 +322,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Pick up a flash notice from a prior rate-modal PRG redirect.
+if ($notice === '' && !empty($_SESSION['flash_notice'])) {
+    $notice = (string) $_SESSION['flash_notice'];
+    unset($_SESSION['flash_notice']);
+}
+
+// GET-side: ?manage_rates=<id> opens the rates modal for that user on load
+// (also used by every rate-management PRG so the modal stays open).  Only
+// honored after the POST handler runs so a successful update can clear it.
+if ($manageRatesUserId === 0 && isset($_GET['manage_rates'])) {
+    $manageRatesUserId = (int) $_GET['manage_rates'];
+}
+if ($editRateId === 0 && isset($_GET['edit_rate'])) {
+    $editRateId = (int) $_GET['edit_rate'];
+}
+
 $users = $db->query(
-    "SELECT id, username, name, email, role, is_active, created_at
+    "SELECT id, username, name, email, role, is_active, created_at, preferences
      FROM users
      ORDER BY is_active DESC, username COLLATE NOCASE ASC"
 )->fetchAll();
+
+// Decode preferences once per row so the table and modal both have it.
+foreach ($users as &$u) {
+    $u['paid_hourly'] = isUserPaidHourly($u);
+}
+unset($u);
+
+// Load rate history for the user whose rates modal is auto-opening.  Kept
+// scoped to that one user; the modal isn't a directory of every employee.
+$manageRatesUser = null;
+$manageRates     = [];
+if ($manageRatesUserId > 0) {
+    foreach ($users as $u) {
+        if ((int) $u['id'] === $manageRatesUserId) {
+            $manageRatesUser = $u;
+            break;
+        }
+    }
+    // Hide the modal if the target isn't visible to this admin (rank guard)
+    // or isn't paid-hourly.  We render no button for those, but a stale URL
+    // shouldn't open an empty modal.
+    if ($manageRatesUser === null
+        || roleRank((string) $manageRatesUser['role']) > $myRank
+        || !$manageRatesUser['paid_hourly']
+    ) {
+        $manageRatesUserId = 0;
+        $manageRatesUser   = null;
+    } else {
+        $stmt = $db->prepare(
+            "SELECT id, hourly_rate, effective_from, effective_to
+             FROM hourly_rates
+             WHERE user_id = ?
+             ORDER BY (effective_from IS NULL) DESC, effective_from ASC"
+        );
+        $stmt->execute([$manageRatesUserId]);
+        $manageRates = $stmt->fetchAll();
+    }
+}
 
 // Roles the current user is allowed to grant — used to populate the
 // modal's role <select>.  Anything above $myRank is filtered out.
@@ -475,11 +645,132 @@ require __DIR__ . '/../app/partials/header.php';
 
     .btn-cancel:hover { background: #f0f0f5; border-color: #c8d0e0; }
 
+    /* "Paid hourly" checkbox row inside the Edit user modal. */
+    .checkbox-row {
+        display: inline-flex;
+        align-items: center;
+        gap: .55rem;
+        font-size: .9rem;
+        font-weight: 500;
+        color: #1a1a2e;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+        width: 1rem;
+        height: 1rem;
+        accent-color: #1a1a2e;
+    }
+
+    /* ── Rates modal ──────────────────────────────────────────────────────── */
+    #rates-modal .modal-box { width: min(680px, 100%); }
+
+    .rates-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.25rem;
+    }
+
+    .rates-table th {
+        text-align: left;
+        font-size: .72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: #555;
+        padding: .35rem .5rem;
+        border-bottom: 1px solid #e5e7eb;
+        white-space: nowrap;
+    }
+
+    .rates-table td {
+        padding: .55rem .5rem;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: .85rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    .rates-table tbody tr:last-child td { border-bottom: none; }
+    .rates-table .col-rate    { font-variant-numeric: tabular-nums; }
+    .rates-table .col-actions { width: 1%; text-align: right; }
+    .rates-table .empty-row td { text-align: center; color: #999; padding: 1rem; }
+    .rates-table .editing-row td { background: #fafbff; }
+
+    .rates-table input[type="date"],
+    .rates-table input[type="number"] {
+        padding: .3rem .45rem;
+        border: 1px solid #d1d5db;
+        border-radius: 5px;
+        font-size: .82rem;
+        font-family: inherit;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .rates-table input[type="number"] { max-width: 6.5rem; }
+
+    .rates-add {
+        background: #fafbff;
+        border: 1px solid #e2e6f0;
+        border-radius: 8px;
+        padding: .85rem 1rem;
+    }
+
+    .rates-add h3 {
+        font-size: .8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: #555;
+        margin-bottom: .65rem;
+    }
+
+    .rates-add-grid {
+        display: grid;
+        grid-template-columns: 6.5rem 1fr 1fr;
+        gap: .55rem;
+        align-items: end;
+    }
+
+    .rates-add-grid .submit-cell {
+        grid-column: 1 / -1;
+        text-align: right;
+        margin-top: .5rem;
+    }
+
+    .rates-add-grid label {
+        font-size: .72rem;
+        font-weight: 600;
+        color: #555;
+        margin-bottom: .25rem;
+        display: block;
+        letter-spacing: .03em;
+    }
+
+    .rates-add-grid input {
+        padding: .42rem .55rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: .85rem;
+        font-family: inherit;
+        width: 100%;
+    }
+
+    .rates-hint {
+        font-size: .72rem;
+        color: #888;
+        margin-top: .55rem;
+    }
+
     @media (max-width: 700px) {
         .users-main { max-width: 100%; padding: 1rem; }
         .modal-grid { grid-template-columns: minmax(0, 1fr); }
         .users-table .col-email   { display: none; }
         .users-table .col-created { display: none; }
+        .rates-add-grid { grid-template-columns: 1fr 1fr; }
+        .rates-add-grid .rate-cell  { grid-column: 1 / -1; }
     }
 </style>
 
@@ -548,10 +839,16 @@ require __DIR__ . '/../app/partials/header.php';
                                         data-email="<?= h((string) $u['email']) ?>"
                                         data-username="<?= h($u['username']) ?>"
                                         data-role="<?= h($targetRole) ?>"
+                                        data-paid-hourly="<?= $u['paid_hourly'] ? '1' : '0' ?>"
                                         data-self="<?= $isSelf ? '1' : '0' ?>"
                                         <?php if ($rankBlocked): ?>disabled title="<?= h($rankTooltip) ?>"<?php endif; ?>>
                                     Edit
                                 </button>
+
+                                <?php if ($u['paid_hourly'] && !$rankBlocked): ?>
+                                    <a class="btn-row"
+                                       href="users.php?<?= h(http_build_query(['manage_rates' => (int) $u['id']])) ?>">Rates</a>
+                                <?php endif; ?>
 
                                 <form method="post" action="users.php" style="display:inline" class="js-reset-form">
                                     <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
@@ -654,6 +951,14 @@ require __DIR__ . '/../app/partials/header.php';
                         <input type="text" id="modal-role-self" value="" disabled>
                         <div class="field-readonly-hint">You can't change your own role.</div>
                     </div>
+
+                    <div class="field full edit-only" id="field-paid-hourly" hidden>
+                        <label class="checkbox-row">
+                            <input type="checkbox" name="paid_hourly" id="modal-paid-hourly" value="1">
+                            <span>Paid hourly</span>
+                        </label>
+                        <div class="field-readonly-hint">When on, this user gets a Rates button on the table for managing their hourly-rate history.</div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -663,6 +968,139 @@ require __DIR__ . '/../app/partials/header.php';
         </form>
     </div>
 </div>
+
+<?php if ($manageRatesUser !== null):
+    // Display label for the rates-modal heading: name preferred, falls back to username.
+    $rateUserLabel = trim((string) $manageRatesUser['name']) !== '' ? $manageRatesUser['name'] : $manageRatesUser['username'];
+
+    $rateRowsHtml = '';
+    $fmtDate = function (?string $d): string {
+        if ($d === null || $d === '') return '<span class="muted">—</span>';
+        return h((new DateTimeImmutable($d))->format('M j, Y'));
+    };
+
+    // Reference anchor for the date inputs: a known pay-week-start far in the
+    // past, used with step=7 to restrict the picker to pay-week-start days.
+    $payWeekAnchor = snapToPayWeekStart('2020-01-01', $tz, $pws);
+    $payWeekDayLabel = match (strtolower($pws)) {
+        'mon'   => 'Monday',
+        'sat'   => 'Saturday',
+        default => 'Sunday',
+    };
+?>
+<!-- ── Hourly-rates modal ─────────────────────────────────────────────── -->
+<div id="rates-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2>Hourly rates — <?= h($rateUserLabel) ?></h2>
+            <a class="modal-close" href="users.php" aria-label="Close">&times;</a>
+        </div>
+        <div class="modal-body">
+            <?php if ($error !== '' && $manageRatesUserId !== 0): ?>
+                <div class="error" style="margin-bottom: 1rem;"><?= h($error) ?></div>
+            <?php endif; ?>
+
+            <table class="rates-table">
+                <thead>
+                    <tr>
+                        <th>From (pay week)</th>
+                        <th>To (pay week)</th>
+                        <th>Rate</th>
+                        <th class="col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($manageRates)): ?>
+                        <tr class="empty-row"><td colspan="4">No rates recorded yet.  Add the first one below.</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($manageRates as $r): ?>
+                            <?php $isEditing = $editRateId === (int) $r['id']; ?>
+                            <?php if ($isEditing): ?>
+                                <tr class="editing-row">
+                                    <form method="post" action="users.php" id="rate-edit-form-<?= (int) $r['id'] ?>">
+                                        <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                                        <input type="hidden" name="action"  value="update_rate">
+                                        <input type="hidden" name="user_id" value="<?= (int) $manageRatesUserId ?>">
+                                        <input type="hidden" name="rate_id" value="<?= (int) $r['id'] ?>">
+                                    </form>
+                                    <td>
+                                        <input form="rate-edit-form-<?= (int) $r['id'] ?>" type="date" name="effective_from"
+                                               min="<?= h($payWeekAnchor) ?>" step="7"
+                                               value="<?= h((string) ($rateForm['from'] !== '' ? $rateForm['from'] : (string) $r['effective_from'])) ?>">
+                                    </td>
+                                    <td>
+                                        <input form="rate-edit-form-<?= (int) $r['id'] ?>" type="date" name="effective_to"
+                                               min="<?= h($payWeekAnchor) ?>" step="7"
+                                               value="<?= h((string) ($rateForm['to'] !== '' ? $rateForm['to'] : (string) $r['effective_to'])) ?>">
+                                    </td>
+                                    <td>
+                                        <input form="rate-edit-form-<?= (int) $r['id'] ?>" type="number" step="0.01" min="0.01" name="hourly_rate" required
+                                               value="<?= h((string) ($rateForm['rate'] !== '' ? $rateForm['rate'] : number_format((float) $r['hourly_rate'], 2, '.', ''))) ?>">
+                                    </td>
+                                    <td class="col-actions">
+                                        <button form="rate-edit-form-<?= (int) $r['id'] ?>" type="submit" class="btn-row" style="border-color:#1a1a2e;color:#1a1a2e">Save</button>
+                                        <a class="btn-row" href="users.php?<?= h(http_build_query(['manage_rates' => (int) $manageRatesUserId])) ?>">Cancel</a>
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <tr>
+                                    <td><?= $fmtDate($r['effective_from']) ?></td>
+                                    <td><?= $fmtDate($r['effective_to']) ?></td>
+                                    <td class="col-rate">$<?= h(number_format((float) $r['hourly_rate'], 2)) ?> / hr</td>
+                                    <td class="col-actions">
+                                        <a class="btn-row" href="users.php?<?= h(http_build_query(['manage_rates' => (int) $manageRatesUserId, 'edit_rate' => (int) $r['id']])) ?>">Edit</a>
+                                        <form method="post" action="users.php" style="display:inline" class="js-confirm-form">
+                                            <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                                            <input type="hidden" name="action"  value="delete_rate">
+                                            <input type="hidden" name="user_id" value="<?= (int) $manageRatesUserId ?>">
+                                            <input type="hidden" name="rate_id" value="<?= (int) $r['id'] ?>">
+                                            <button type="submit" class="btn-row deactivate"
+                                                    data-confirm="Delete this rate row?">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <?php if ($editRateId === 0): ?>
+            <form method="post" action="users.php" class="rates-add">
+                <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                <input type="hidden" name="action"  value="add_rate">
+                <input type="hidden" name="user_id" value="<?= (int) $manageRatesUserId ?>">
+
+                <h3>Add a new rate</h3>
+                <div class="rates-add-grid">
+                    <div class="rate-cell">
+                        <label for="rates-add-rate">$ / hr</label>
+                        <input id="rates-add-rate" type="number" step="0.01" min="0.01" name="hourly_rate" required
+                               value="<?= h($rateForm['mode'] === 'add' ? $rateForm['rate'] : '') ?>">
+                    </div>
+                    <div>
+                        <label for="rates-add-from">From</label>
+                        <input id="rates-add-from" type="date" name="effective_from"
+                               min="<?= h($payWeekAnchor) ?>" step="7"
+                               value="<?= h($rateForm['mode'] === 'add' ? $rateForm['from'] : '') ?>">
+                    </div>
+                    <div>
+                        <label for="rates-add-to">To</label>
+                        <input id="rates-add-to" type="date" name="effective_to"
+                               min="<?= h($payWeekAnchor) ?>" step="7"
+                               value="<?= h($rateForm['mode'] === 'add' ? $rateForm['to'] : '') ?>">
+                    </div>
+                    <div class="submit-cell">
+                        <button type="submit" class="btn-primary">Add rate</button>
+                    </div>
+                </div>
+                <div class="rates-hint">Dates must be a <?= h($payWeekDayLabel) ?> (the pay-week-start).  Any other date is snapped back to its containing pay week.  Leave either side blank for an open-ended range.</div>
+            </form>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <script>
 (function () {
@@ -682,11 +1120,13 @@ require __DIR__ . '/../app/partials/header.php';
     var usernameRO  = document.getElementById('modal-username-readonly');
     var roleEl      = document.getElementById('modal-role');
     var roleSelfEl  = document.getElementById('modal-role-self');
+    var paidHourlyEl= document.getElementById('modal-paid-hourly');
     var fieldUser   = document.getElementById('field-username');
     var fieldUserRO = document.getElementById('field-username-readonly');
     var fieldRole   = document.getElementById('field-role');
     var fieldRoleS  = document.getElementById('field-role-self');
     var createOnly  = document.querySelectorAll('.create-only');
+    var editOnly    = document.querySelectorAll('.edit-only');
 
     // Human-readable role labels, mirroring ROLE_LABELS in app/permissions.php.
     // Used by the self-edit readonly display where we have only the role key
@@ -700,6 +1140,14 @@ require __DIR__ . '/../app/partials/header.php';
             // submitted with the form.
             el.querySelectorAll('input').forEach(function (inp) {
                 inp.disabled = !show;
+            });
+        });
+        // Edit-only fields are the mirror image — visible only when not
+        // creating.  Disable when hidden for the same submit-suppression reason.
+        editOnly.forEach(function (el) {
+            el.hidden = show;
+            el.querySelectorAll('input').forEach(function (inp) {
+                inp.disabled = show;
             });
         });
     }
@@ -771,6 +1219,9 @@ require __DIR__ . '/../app/partials/header.php';
 
         nameEl.value  = data.name  || '';
         emailEl.value = data.email || '';
+        if (paidHourlyEl) {
+            paidHourlyEl.checked = data.paidHourly === '1' || data.paidHourly === 1 || data.paidHourly === true;
+        }
 
         modal.hidden = false;
         setTimeout(function () { nameEl.focus(); }, 30);
@@ -809,12 +1260,13 @@ require __DIR__ . '/../app/partials/header.php';
             if (btn.disabled) { return; }
             clearModalError();
             openEdit({
-                id:       btn.dataset.id,
-                username: btn.dataset.username,
-                name:     btn.dataset.name,
-                email:    btn.dataset.email,
-                role:     btn.dataset.role,
-                self:     btn.dataset.self,
+                id:          btn.dataset.id,
+                username:    btn.dataset.username,
+                name:        btn.dataset.name,
+                email:       btn.dataset.email,
+                role:        btn.dataset.role,
+                paidHourly:  btn.dataset.paidHourly,
+                self:        btn.dataset.self,
             });
         });
     });
@@ -841,15 +1293,52 @@ require __DIR__ . '/../app/partials/header.php';
         });
     <?php elseif ($reopenMode === 'edit'): ?>
         openEdit({
-            id:       <?= json_encode($form['id']) ?>,
-            username: <?= json_encode($form['username']) ?>,
-            name:     <?= json_encode($form['name']) ?>,
-            email:    <?= json_encode($form['email']) ?>,
-            role:     <?= json_encode($form['role']) ?>,
-            self:     <?= json_encode((int) $form['id'] === (int) $me['id'] ? '1' : '0') ?>,
+            id:         <?= json_encode($form['id']) ?>,
+            username:   <?= json_encode($form['username']) ?>,
+            name:       <?= json_encode($form['name']) ?>,
+            email:      <?= json_encode($form['email']) ?>,
+            role:       <?= json_encode($form['role']) ?>,
+            paidHourly: <?= json_encode($form['paid_hourly'] ? '1' : '0') ?>,
+            self:       <?= json_encode((int) $form['id'] === (int) $me['id'] ? '1' : '0') ?>,
         });
     <?php endif; ?>
 }());
+
+<?php if ($manageRatesUserId > 0): ?>
+// Auto-open the rates modal when ?manage_rates=<id> is on the URL (or a
+// rate-management PRG put us back there).
+(function () {
+    'use strict';
+    var modal = document.getElementById('rates-modal');
+    if (!modal) return;
+    modal.hidden = false;
+
+    // Esc and clicking outside the box should drop the manage_rates param
+    // by navigating back to /users.php; the close link in the header does
+    // the same thing.  Both fully reset the modal-open state.
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) {
+            window.location.href = '/users.php';
+        }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.hidden) {
+            window.location.href = '/users.php';
+        }
+    });
+
+    // Per-row delete-confirm prompts.
+    modal.querySelectorAll('form.js-confirm-form').forEach(function (frm) {
+        frm.addEventListener('submit', function (e) {
+            var btn = frm.querySelector('button[type=submit]');
+            var msg = btn && btn.dataset.confirm;
+            if (msg && !window.confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+}());
+<?php endif; ?>
 </script>
 
 <?php require __DIR__ . '/../app/partials/footer.php'; ?>

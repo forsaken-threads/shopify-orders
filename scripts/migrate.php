@@ -359,4 +359,60 @@ $pdo->exec(<<<'SQL'
         ON timecard_approvals(user_id, week_start_date);
 SQL);
 
+// ── Hourly pay ───────────────────────────────────────────────────────────────
+//
+// Tracks a per-user hourly rate over time.  A row records that the given user
+// earned $hourly_rate during the inclusive range [effective_from, effective_to],
+// where either endpoint may be NULL to mean "no lower bound" / "still in effect".
+//
+// Date values are 'YYYY-MM-DD' pay-week-start dates in the display timezone —
+// the same boundary the rest of the timeclock code computes via
+// weekStartLocalDate().  The users page validates and snaps any admin-entered
+// date to a pay-week-start before insert / update so this invariant holds.
+//
+// Overlap is rejected at the application layer (no DB constraint enforces it
+// because the open-ended NULLs would make a CHECK constraint awkward).
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS hourly_rates (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        hourly_rate    REAL    NOT NULL,
+        effective_from TEXT,
+        effective_to   TEXT,
+        created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hourly_rates_user ON hourly_rates(user_id, effective_from);
+SQL);
+
+// ── Add payment-tracking columns to timecard_approvals ───────────────────────
+//
+// Once an approved week is paid, paid_at / paid_by record when and by whom,
+// and amount_paid is the dollar amount that was disbursed (computed from the
+// total hours * the rate in effect at that week_start_date).
+//
+// Approved-and-paid is terminal: timecards.php blocks unapproving a paid week.
+
+try {
+    $pdo->exec('ALTER TABLE timecard_approvals ADD COLUMN paid_at TEXT');
+    echo "Added paid_at column to timecard_approvals table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+try {
+    $pdo->exec('ALTER TABLE timecard_approvals ADD COLUMN paid_by INTEGER REFERENCES users(id)');
+    echo "Added paid_by column to timecard_approvals table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
+try {
+    $pdo->exec('ALTER TABLE timecard_approvals ADD COLUMN amount_paid REAL');
+    echo "Added amount_paid column to timecard_approvals table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
 echo "Migration complete.\n";

@@ -168,6 +168,84 @@ function weekStartDateFor(string $utcDt, DateTimeZone $tz, string $payWeekStart)
 }
 
 /**
+ * Snap an arbitrary local-calendar date string ('YYYY-MM-DD') to the
+ * pay-week-start date that contains it.  Used by the rate-history forms
+ * on /users.php so admins can type any date and the row stores the
+ * pay-week boundary that the rest of the timeclock code expects.
+ */
+function snapToPayWeekStart(string $dateStr, DateTimeZone $tz, string $payWeekStart): string
+{
+    $local = new DateTimeImmutable($dateStr . ' 00:00:00', $tz);
+    return weekStartLocalDate($local->setTimezone(new DateTimeZone('UTC')), $tz, $payWeekStart);
+}
+
+/**
+ * Decode a user row's preferences JSON and return whether the user is
+ * paid hourly.  Defaults to false on a missing flag or unparseable JSON.
+ */
+function isUserPaidHourly(array $user): bool
+{
+    $prefs = $user['preferences'] ?? null;
+    if (is_string($prefs)) {
+        $prefs = json_decode($prefs, true) ?: [];
+    } elseif (!is_array($prefs)) {
+        $prefs = [];
+    }
+    return !empty($prefs['paid_hourly']);
+}
+
+/**
+ * Look up the hourly rate that was in effect for the user during the
+ * pay-period week starting on $weekStartDate.  Returns the matching
+ * hourly_rates row or null when no row covers that week.
+ *
+ * Overlaps are forbidden at insert time, so at most one row matches.
+ */
+function effectiveRateFor(PDO $db, int $userId, string $weekStartDate): ?array
+{
+    $stmt = $db->prepare(
+        "SELECT id, hourly_rate, effective_from, effective_to
+         FROM hourly_rates
+         WHERE user_id = ?
+           AND (effective_from IS NULL OR effective_from <= ?)
+           AND (effective_to   IS NULL OR effective_to   >= ?)
+         LIMIT 1"
+    );
+    $stmt->execute([$userId, $weekStartDate, $weekStartDate]);
+    return $stmt->fetch() ?: null;
+}
+
+/**
+ * Check whether a [from, to] range (either bound nullable) overlaps any
+ * existing hourly_rates row for the user.  Ignores the row with id
+ * $ignoreId, used by the edit flow so a row's own range doesn't
+ * conflict with itself.
+ */
+function hourlyRateRangeOverlaps(
+    PDO $db,
+    int $userId,
+    ?string $from,
+    ?string $to,
+    ?int $ignoreId = null
+): bool {
+    // Two inclusive ranges [a,b] and [c,d] overlap iff (a <= d) AND (c <= b),
+    // where NULL on a low bound = -inf and NULL on a high bound = +inf.
+    $sql = "SELECT 1 FROM hourly_rates
+            WHERE user_id = ?
+              AND (effective_from IS NULL OR ? IS NULL OR effective_from <= ?)
+              AND (effective_to   IS NULL OR ? IS NULL OR effective_to   >= ?)";
+    $args = [$userId, $to, $to, $from, $from];
+    if ($ignoreId !== null) {
+        $sql  .= " AND id != ?";
+        $args[] = $ignoreId;
+    }
+    $sql .= " LIMIT 1";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($args);
+    return (bool) $stmt->fetchColumn();
+}
+
+/**
  * Open a new shift for $userId.  Caller must verify there's no existing
  * open punch and that the user's current pay week isn't approved.
  */
