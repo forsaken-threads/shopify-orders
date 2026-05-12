@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.5.1',
+        'date'    => '2026-05-12',
+        'title'   => 'Responsive header for narrower screens',
+        'notes'   => [
+            'Below 1200px wide, the top-nav links (Orders, Reports, Charts, Bundles, Clock, Time cards) collapse into a hamburger menu next to the brand.  Search, the release bell, and the user menu stay where they were.',
+            'Below 700px wide, the header wraps into three rows — brand + hamburger, then the search bar full-width, then the bell + user menu — instead of hiding the user menu like before.  All text and spacing also shrink slightly at this size to reduce awkward wrapping on tight layouts.',
+            'The non-production environment badge (e.g. "STAGING") now floats in the lower-left corner of the page instead of sitting in the middle of the header, so it no longer competes with the nav links for space.',
+        ],
+    ],
+    [
         'version' => '1.5.0',
         'date'    => '2026-05-11',
         'title'   => 'Time clock and weekly time cards',
