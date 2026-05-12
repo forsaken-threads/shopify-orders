@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.5.0',
+        'date'    => '2026-05-11',
+        'title'   => 'Time clock and weekly time cards',
+        'notes'   => [
+            'New Clock page (in the nav for everyone) — Clock In / Clock Out, current shift state, this-week total, and a list of shifts in the current pay-period week.  Designed to be usable from a phone.',
+            'New Time cards page (admin and root) — pick an employee and a pay-period week, view their shifts, edit or delete any punch, add a missing one, and approve the week.  Approving locks the week from further edits until an admin re-opens it.',
+            'Pay-period week start is configurable via PAY_WEEK_START in env.ini.  Supports "sun" (default), "mon", and "sat".',
+            'Stale-shift safety: if you forgot to clock out from a previous day, the Clock page locks you out of clock-out and tells you to ask your manager — they fix the actual time on the Time cards page instead of you guessing.',
+            'Header search ("Search orders…") is now only visible to Data Entry and up, since Basic Employees don\'t have any access to orders to begin with.',
+            'Deploy step: production needs `php scripts/migrate.php` to add the time_punches and timecard_approvals tables, and PAY_WEEK_START set to "sat" in env.ini for the Saturday → Friday pay cadence.',
+        ],
+    ],
+    [
         'version' => '1.4.0',
         'date'    => '2026-05-11',
         'title'   => 'Role-based access',
