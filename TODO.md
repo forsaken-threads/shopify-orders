@@ -29,6 +29,8 @@ authoritative log of shipped releases.
 Items move here after they ship; keep only the most recent 10.
 `app/changelog.php` is the authoritative log of everything older.
 
+- **1.7.0** — Masquerade-as-another-user feature for root: per-row button
+  on Users page, header suffix `(orig-username)`, "Log out as" link.
 - **1.6.0** — Hourly rates with effective date ranges, plus a Mark-paid
   workflow on the Time cards page that records `paid_at` / `paid_by` /
   `amount_paid`.

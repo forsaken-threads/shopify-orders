@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.7.0',
+        'date'    => '2026-05-12',
+        'title'   => 'Masquerade as another user (root only)',
+        'notes'   => [
+            'Users page: root users now see a Masquerade button on every active user row (except their own).  Clicking it switches your session to that user — for the duration of the masquerade you have exactly that user\'s permissions, no more and no less.  Useful for reproducing what an employee is seeing without asking them to share their password.',
+            'While masquerading, the header user button shows the masqueraded user\'s name followed by "(your-original-username)" so it\'s always visible at a glance.  The user menu gains a "Log out as <username>" link that reverts you to your original session.  Everything else looks completely normal.',
+            'Nested masquerades are blocked — stop the current one first.  If the original (root) account is deactivated or stripped of root mid-masquerade, the whole session is torn down on the next request rather than silently dropping you into a role you didn\'t choose.',
+        ],
+    ],
+    [
         'version' => '1.6.0',
         'date'    => '2026-05-12',
         'title'   => 'Hourly rates and payroll tracking',
