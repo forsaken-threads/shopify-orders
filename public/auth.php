@@ -133,6 +133,13 @@ function logOut(): void
  * Returns the currently signed-in user (refreshed from the database each call
  * so that profile edits and deactivations take effect immediately), or null
  * if there is no valid session.  Safe to call from logged-out pages.
+ *
+ * When the session is masquerading (original_user_id is set), the returned
+ * row is the masquerade *target* — permission checks should operate as that
+ * user.  The original (root) user is re-validated each call too; if they've
+ * been deactivated or stripped of root, the session is torn down entirely.
+ * If the target is gone but the original is still eligible, masquerade ends
+ * silently and the original is returned.
  */
 function currentUser(array $config): ?array
 {
@@ -144,7 +151,31 @@ function currentUser(array $config): ?array
     if ($userId <= 0) {
         return null;
     }
-    $user = findActiveUserById(getDb($config), $userId);
+
+    $db         = getDb($config);
+    $originalId = (int) ($_SESSION['original_user_id'] ?? 0);
+
+    if ($originalId > 0) {
+        $original = findActiveUserById($db, $originalId);
+        if ($original === null || ($original['role'] ?? '') !== 'root') {
+            // Original user no longer eligible to be masquerading — tear
+            // the whole session down rather than silently land them on a
+            // role they didn't choose.
+            logOut();
+            return null;
+        }
+        $target = findActiveUserById($db, $userId);
+        if ($target === null) {
+            // Masquerade target vanished; revert to the original.
+            unset($_SESSION['original_user_id'], $_SESSION['original_username']);
+            $_SESSION['user'] = $original;
+            return $original;
+        }
+        $_SESSION['user'] = $target;
+        return $target;
+    }
+
+    $user = findActiveUserById($db, $userId);
     if ($user === null) {
         // Account was deleted or deactivated — tear the session down.
         logOut();
@@ -152,6 +183,58 @@ function currentUser(array $config): ?array
     }
     $_SESSION['user'] = $user;
     return $user;
+}
+
+/**
+ * Begin masquerading as another user.  Stashes the current (root) session
+ * user's id and username on the session and swaps $_SESSION['user'] for the
+ * target row, so all subsequent permission checks operate as the target.
+ *
+ * Caller is responsible for verifying that the acting user has the
+ * 'masquerade' permission and that the target is a valid, active user.
+ */
+function startMasquerade(array $target): void
+{
+    $me = $_SESSION['user'] ?? null;
+    if (!is_array($me) || (int) ($me['id'] ?? 0) <= 0) {
+        return;
+    }
+    session_regenerate_id(true);
+    $_SESSION['original_user_id']  = (int)    $me['id'];
+    $_SESSION['original_username'] = (string) ($me['username'] ?? '');
+    $_SESSION['user']              = $target;
+}
+
+/**
+ * Stop masquerading and revert to the original user.  Returns the original
+ * user's row on success, or null when not masquerading or when the original
+ * is no longer eligible — in the latter case the session is destroyed.
+ */
+function stopMasquerade(array $config): ?array
+{
+    $originalId = (int) ($_SESSION['original_user_id'] ?? 0);
+    unset($_SESSION['original_user_id'], $_SESSION['original_username']);
+    if ($originalId <= 0) {
+        return null;
+    }
+    $original = findActiveUserById(getDb($config), $originalId);
+    if ($original === null || ($original['role'] ?? '') !== 'root') {
+        logOut();
+        return null;
+    }
+    session_regenerate_id(true);
+    $_SESSION['user'] = $original;
+    return $original;
+}
+
+/**
+ * Username of the original (pre-masquerade) user, or '' when not
+ * masquerading.  Cheap session lookup — no DB hit — for the header to
+ * render its "(orig)" suffix on every page.
+ */
+function originalUsername(): string
+{
+    return (string) ($_SESSION['original_username'] ?? '');
 }
 
 /**

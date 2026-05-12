@@ -984,10 +984,20 @@ function toggleAccordion(cardId) {
         </svg>
         <span class="navbar-bell-dot"></span>
     </button>
-    <?php $userName = (string) ($sessionUser['name'] ?? ''); if ($userName !== ''): ?>
+    <?php
+        $userName     = (string) ($sessionUser['name'] ?? '');
+        $userUsername = (string) ($sessionUser['username'] ?? '');
+        $origUsername = (string) ($_SESSION['original_username'] ?? '');
+        // Fall back to username when the user has no display name set — only
+        // really matters during masquerade where we want the suffix to show
+        // even if the target has no name.
+        $displayName  = $userName !== '' ? $userName : $userUsername;
+        $headerLabel  = $displayName . ($origUsername !== '' ? ' (' . $origUsername . ')' : '');
+        if ($displayName !== ''):
+    ?>
     <button type="button" class="navbar-user" id="navbar-user-trigger"
-            aria-haspopup="menu" aria-expanded="false" title="<?= h($userName) ?>">
-        <span><?= h($userName) ?></span>
+            aria-haspopup="menu" aria-expanded="false" title="<?= h($headerLabel) ?>">
+        <span><?= h($headerLabel) ?></span>
         <svg class="navbar-user-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="user-menu" id="navbar-user-menu" role="menu" hidden>
@@ -996,6 +1006,9 @@ function toggleAccordion(cardId) {
             <a href="users.php" role="menuitem">Users</a>
         <?php endif; ?>
         <div class="user-menu-sep"></div>
+        <?php if ($origUsername !== ''): ?>
+            <a href="stop-masquerade.php" role="menuitem">Log out as <?= h($userUsername) ?></a>
+        <?php endif; ?>
         <a href="logout.php"  role="menuitem">Sign out</a>
     </div>
     <?php endif; ?>

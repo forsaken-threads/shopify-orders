@@ -11,7 +11,7 @@ declare(strict_types=1);
  *   basic_employee  — clock_in_out (placeholder for a future feature)
  *   data_entry      — + orders, bundles
  *   admin           — + reports, charts, manage_users
- *   root            — + shopify_install
+ *   root            — + shopify_install, masquerade
  *
  * The PERMISSIONS_BY_ROLE map is the single source of truth: page and API
  * gates call userCan() / requirePermission() / requireApiPermission()
@@ -48,7 +48,7 @@ const PERMISSIONS_BY_ROLE = [
     'basic_employee' => ['clock_in_out'],
     'data_entry'     => ['clock_in_out', 'orders', 'bundles'],
     'admin'          => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards'],
-    'root'           => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'shopify_install'],
+    'root'           => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'shopify_install', 'masquerade'],
 ];
 
 /**

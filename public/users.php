@@ -293,6 +293,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'Failed to send the reset email; check the server logs.';
                 }
             }
+        } elseif ($action === 'masquerade') {
+            // Root-only escape hatch for impersonating another user.  Guards:
+            // permission, no nested masquerade, not self, target is active.
+            $targetId = (int) ($_POST['user_id'] ?? 0);
+
+            if (!userCan($me, 'masquerade')) {
+                $error = "You don't have permission to masquerade.";
+            } elseif (!empty($_SESSION['original_user_id'])) {
+                $error = "You're already masquerading — stop the current session first.";
+            } elseif ($targetId <= 0 || $targetId === (int) $me['id']) {
+                $error = 'Invalid user.';
+            } else {
+                $stmt = $db->prepare(
+                    "SELECT id, username, name, email, preferences, is_active, role
+                     FROM users WHERE id = ?"
+                );
+                $stmt->execute([$targetId]);
+                $row = $stmt->fetch() ?: null;
+                if ($row === null || (int) $row['is_active'] !== 1) {
+                    $error = "Can't masquerade as that user.";
+                } else {
+                    startMasquerade(hydrateUserRow($row));
+                    header('Location: /index.php');
+                    exit;
+                }
+            }
         } elseif ($action === 'toggle') {
             $targetId = (int) ($_POST['user_id'] ?? 0);
 
@@ -850,6 +876,25 @@ require __DIR__ . '/../app/partials/header.php';
                                        href="users.php?<?= h(http_build_query(['manage_rates' => (int) $u['id']])) ?>">Rates</a>
                                 <?php endif; ?>
 
+                                <?php
+                                    // Masquerade button — root-only, not for self, active users only, never nested.
+                                    $canMasquerade = userCan($me, 'masquerade')
+                                        && !$isSelf
+                                        && $isActive
+                                        && empty($_SESSION['original_user_id']);
+                                ?>
+                                <?php if ($canMasquerade): ?>
+                                <form method="post" action="users.php" style="display:inline" class="js-confirm-form">
+                                    <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
+                                    <input type="hidden" name="action"  value="masquerade">
+                                    <input type="hidden" name="user_id" value="<?= (int) $u['id'] ?>">
+                                    <button type="submit" class="btn-row"
+                                            data-confirm="Masquerade as <?= h($u['name'] !== '' ? $u['name'] : $u['username']) ?>?  You'll have only that user's permissions until you stop.">
+                                        Masquerade
+                                    </button>
+                                </form>
+                                <?php endif; ?>
+
                                 <form method="post" action="users.php" style="display:inline" class="js-reset-form">
                                     <input type="hidden" name="_csrf"   value="<?= h($_SESSION['csrf_token']) ?>">
                                     <input type="hidden" name="action"  value="reset_password">
@@ -1271,8 +1316,10 @@ require __DIR__ . '/../app/partials/header.php';
         });
     });
 
-    // Reset-password forms: confirm before submitting.
-    document.querySelectorAll('.js-reset-form').forEach(function (frm) {
+    // Generic data-confirm handler for any form whose submit button carries
+    // a data-confirm message.  Used by reset-password, masquerade, and the
+    // rates modal's per-row delete forms.
+    document.querySelectorAll('form.js-reset-form, form.js-confirm-form').forEach(function (frm) {
         frm.addEventListener('submit', function (e) {
             var btn = frm.querySelector('button[type=submit]');
             var msg = btn && btn.dataset.confirm;
@@ -1325,17 +1372,6 @@ require __DIR__ . '/../app/partials/header.php';
         if (e.key === 'Escape' && !modal.hidden) {
             window.location.href = '/users.php';
         }
-    });
-
-    // Per-row delete-confirm prompts.
-    modal.querySelectorAll('form.js-confirm-form').forEach(function (frm) {
-        frm.addEventListener('submit', function (e) {
-            var btn = frm.querySelector('button[type=submit]');
-            var msg = btn && btn.dataset.confirm;
-            if (msg && !window.confirm(msg)) {
-                e.preventDefault();
-            }
-        });
     });
 }());
 <?php endif; ?>
