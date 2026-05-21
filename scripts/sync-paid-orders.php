@@ -9,9 +9,9 @@ declare(strict_types=1);
  * financial_status of paid, partially_refunded, or refunded that are not
  * already present in the local SQLite database.  Orders already stored
  * (matched by shopify_order_id) are skipped so existing status values are
- * never overwritten.  Refund amounts are not applied to line item figures —
- * refund attribution (order.refunds[].refund_line_items[]) is available in
- * raw_data if needed in future.
+ * never overwritten.  Per-line quantities use current_quantity, so units removed
+ * by an order edit or refund are not stored; the full Shopify order remains in
+ * raw_data if refund attribution is needed in future.
  *
  * Usage:
  *   php scripts/sync-paid-orders.php [--all-time]
@@ -245,6 +245,14 @@ while ($nextUrl !== null) {
             $orderId = (int) $db->lastInsertId();
 
             foreach ($order['line_items'] ?? [] as $item) {
+                // current_quantity reflects order edits and refund restocks; use it
+                // as the canonical figure so removed/refunded units aren't stored.
+                // A line edited down to zero is dropped entirely.
+                $quantity = (int) ($item['current_quantity'] ?? $item['quantity'] ?? 1);
+                if ($quantity === 0) {
+                    continue;
+                }
+
                 $productId   = (string) ($item['product_id'] ?? '');
                 $customBrand = $brandByProductId[$productId] ?? null;
 
@@ -274,7 +282,7 @@ while ($nextUrl !== null) {
                     ':variant_ml'         => $variantMl,
                     ':sku'                => $item['sku']    ?? null,
                     ':vendor'             => $item['vendor'] ?? null,
-                    ':quantity'           => (int)   ($item['quantity'] ?? 1),
+                    ':quantity'           => $quantity,
                     ':price'              => (float) ($item['price']    ?? 0.0),
                     ':custom_brand'       => $customBrand,
                 ]);

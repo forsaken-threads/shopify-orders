@@ -58,10 +58,9 @@ if (!is_array($order) || empty($order['id'])) {
 
 // ── For non-fulfilled topics: only process revenue-bearing orders ─────────────
 //
-// Accept paid, partially_refunded, and refunded orders.
-// Partially/fully refunded orders are stored with their original line item amounts;
-// refund attribution (order.refunds[].refund_line_items[]) is not applied to
-// revenue figures — refunds are rare and the data is still useful for reporting.
+// Accept paid, partially_refunded, and refunded orders. Per-line quantities are
+// taken from current_quantity (see the line-item loop below), so units removed by
+// an order edit or refund are not stored, printed, or counted in reports.
 
 const ACCEPTED_FINANCIAL_STATUSES = ['paid', 'partially_paid', 'partially_refunded', 'refunded'];
 
@@ -211,6 +210,15 @@ try {
     SQL);
 
     foreach ($order['line_items'] ?? [] as $item) {
+        // current_quantity reflects order edits and refund restocks; quantity is
+        // the original ordered amount and never decreases. Use current_quantity as
+        // the canonical figure so removed/refunded units aren't picked, printed, or
+        // counted. A line edited down to zero is dropped entirely.
+        $quantity = (int) ($item['current_quantity'] ?? $item['quantity'] ?? 1);
+        if ($quantity === 0) {
+            continue;
+        }
+
         $productId   = (string) ($item['product_id'] ?? '');
         $customBrand = $brandByProductId[$productId] ?? null;
 
@@ -242,7 +250,7 @@ try {
             ':variant_ml'         => $variantMl,
             ':sku'                => $item['sku']    ?? null,
             ':vendor'             => $item['vendor'] ?? null,
-            ':quantity'           => (int)   ($item['quantity'] ?? 1),
+            ':quantity'           => $quantity,
             ':price'              => (float) ($item['price']    ?? 0.0),
             ':custom_brand'       => $customBrand,
         ]);
