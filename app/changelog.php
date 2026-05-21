@@ -18,6 +18,15 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.8.0',
+        'date'    => '2026-05-21',
+        'title'   => 'Refunded and removed items no longer print',
+        'notes'   => [
+            'When an order is edited or refunded to remove line items, those items no longer appear on the order or its print labels.  Previously a line item removed shortly after an order came in could still be picked and printed days later -- the order tracked the originally ordered amounts rather than what was actually still owed.  Now the order always reflects the current quantities, and an item removed entirely drops off the order.',
+            'A one-time correction was run against orders that had not yet shipped, so any already-affected pending order now shows the right items.  Orders that already shipped are left exactly as they were.',
+        ],
+    ],
+    [
         'version' => '1.7.0',
         'date'    => '2026-05-12',
         'title'   => 'Masquerade as another user (root only)',
