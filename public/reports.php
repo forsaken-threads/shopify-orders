@@ -185,12 +185,34 @@ require __DIR__ . '/../app/partials/header.php';
     .results-clear-btn:hover { border-color: #aab; color: #444; }
 
     /* ── Summary row ── */
+    .summary-group-row {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.25rem;
+    }
+
+    .summary-group { flex: 1 1 auto; }
+
+    .summary-group-label {
+        font-size: .72rem;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: #1a1a2e;
+        font-weight: 700;
+        margin-bottom: .45rem;
+    }
+
     .summary-pills {
         display: flex;
         gap: .75rem;
         margin-bottom: 1.25rem;
         flex-wrap: wrap;
     }
+
+    .summary-group .summary-pills { margin-bottom: 0; }
+
+    .summary-group-fulfilled .summary-pill { background: #eef0fb; }
 
     .summary-pill {
         background: #f0f2f5;
@@ -240,6 +262,13 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     .variant-table th:not(:first-child) { text-align: right; }
+    .variant-table th.col-group { text-align: center; }
+
+    /* ── Fulfilled column group: subtle tint + a divider on the group edge ── */
+    .variant-table .col-group-fulfilled { background: rgba(99, 102, 241, .06); }
+    .variant-table thead .col-group-fulfilled { background: rgba(255, 255, 255, .08); }
+    .variant-table .col-divide { border-left: 1px solid #e2e8f0; }
+    .variant-table thead .col-divide { border-left: 1px solid rgba(255, 255, 255, .25); }
 
     .variant-table td {
         padding: .7rem 1rem;
@@ -391,14 +420,32 @@ require __DIR__ . '/../app/partials/header.php';
                         <button class="results-clear-btn" onclick="clearProfitability()">Clear</button>
                     </div>
 
-                    <div class="summary-pills">
-                        <div class="summary-pill">
-                            <div class="summary-pill-label">Total Units Sold</div>
-                            <div class="summary-pill-value" id="pp-total-units">—</div>
+                    <div class="summary-group-row">
+                        <div class="summary-group">
+                            <div class="summary-group-label">All Orders</div>
+                            <div class="summary-pills">
+                                <div class="summary-pill">
+                                    <div class="summary-pill-label">Total Units Sold</div>
+                                    <div class="summary-pill-value" id="pp-total-units">—</div>
+                                </div>
+                                <div class="summary-pill">
+                                    <div class="summary-pill-label">Total Revenue</div>
+                                    <div class="summary-pill-value" id="pp-total-revenue">—</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="summary-pill">
-                            <div class="summary-pill-label">Total Revenue</div>
-                            <div class="summary-pill-value" id="pp-total-revenue">—</div>
+                        <div class="summary-group summary-group-fulfilled">
+                            <div class="summary-group-label">Fulfilled</div>
+                            <div class="summary-pills">
+                                <div class="summary-pill">
+                                    <div class="summary-pill-label">Units Fulfilled</div>
+                                    <div class="summary-pill-value" id="pp-fulfilled-units">—</div>
+                                </div>
+                                <div class="summary-pill">
+                                    <div class="summary-pill-label">Fulfilled Revenue</div>
+                                    <div class="summary-pill-value" id="pp-fulfilled-revenue">—</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -406,11 +453,18 @@ require __DIR__ . '/../app/partials/header.php';
                         <table class="variant-table">
                             <thead>
                                 <tr>
-                                    <th>Variant</th>
-                                    <th>Units Sold</th>
-                                    <th>ML Sold</th>
+                                    <th rowspan="2">Variant</th>
+                                    <th colspan="3" class="col-group">All Orders</th>
+                                    <th colspan="3" class="col-group col-group-fulfilled col-divide">Fulfilled</th>
+                                    <th rowspan="2">Share</th>
+                                </tr>
+                                <tr>
+                                    <th>Units</th>
+                                    <th>ML</th>
                                     <th>Revenue</th>
-                                    <th>Share</th>
+                                    <th class="col-group-fulfilled col-divide">Units</th>
+                                    <th class="col-group-fulfilled">ML</th>
+                                    <th class="col-group-fulfilled">Revenue</th>
                                 </tr>
                             </thead>
                             <tbody id="pp-variant-rows"></tbody>
@@ -420,6 +474,9 @@ require __DIR__ . '/../app/partials/header.php';
                                     <td id="pp-foot-units">—</td>
                                     <td id="pp-foot-ml">—</td>
                                     <td id="pp-foot-revenue">—</td>
+                                    <td id="pp-foot-fulfilled-units" class="col-group-fulfilled col-divide">—</td>
+                                    <td id="pp-foot-fulfilled-ml" class="col-group-fulfilled">—</td>
+                                    <td id="pp-foot-fulfilled-revenue" class="col-group-fulfilled">—</td>
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -603,20 +660,25 @@ require __DIR__ . '/../app/partials/header.php';
         const variants     = data.variants;
         const totalRevenue = summary.total_revenue;
 
-        document.getElementById('pp-product-name').textContent    = product.title;
-        document.getElementById('pp-product-vendor').textContent  = product.vendor ? product.vendor : '';
-        document.getElementById('pp-total-units').textContent     = fmtNum(summary.total_units);
-        document.getElementById('pp-total-revenue').textContent   = fmtCurrency(totalRevenue);
-        document.getElementById('pp-foot-units').textContent      = fmtNum(summary.total_units);
-        document.getElementById('pp-foot-ml').textContent         = fmtNum(summary.total_ml);
-        document.getElementById('pp-foot-revenue').textContent    = fmtCurrency(totalRevenue);
+        document.getElementById('pp-product-name').textContent        = product.title;
+        document.getElementById('pp-product-vendor').textContent      = product.vendor ? product.vendor : '';
+        document.getElementById('pp-total-units').textContent         = fmtNum(summary.total_units);
+        document.getElementById('pp-total-revenue').textContent       = fmtCurrency(totalRevenue);
+        document.getElementById('pp-fulfilled-units').textContent     = fmtNum(summary.fulfilled_units);
+        document.getElementById('pp-fulfilled-revenue').textContent   = fmtCurrency(summary.fulfilled_revenue);
+        document.getElementById('pp-foot-units').textContent          = fmtNum(summary.total_units);
+        document.getElementById('pp-foot-ml').textContent             = fmtNum(summary.total_ml);
+        document.getElementById('pp-foot-revenue').textContent        = fmtCurrency(totalRevenue);
+        document.getElementById('pp-foot-fulfilled-units').textContent   = fmtNum(summary.fulfilled_units);
+        document.getElementById('pp-foot-fulfilled-ml').textContent      = fmtNum(summary.fulfilled_ml);
+        document.getElementById('pp-foot-fulfilled-revenue').textContent = fmtCurrency(summary.fulfilled_revenue);
 
         const tbody = document.getElementById('pp-variant-rows');
         tbody.innerHTML = '';
 
         if (variants.length === 0) {
             const tr = document.createElement('tr');
-            tr.innerHTML = '<td colspan="5" style="text-align:center;color:#aaa;padding:1.25rem 1rem;">No sales found for this product.</td>';
+            tr.innerHTML = '<td colspan="8" style="text-align:center;color:#aaa;padding:1.25rem 1rem;">No sales found for this product.</td>';
             tbody.appendChild(tr);
         } else {
             variants.forEach(function (v) {
@@ -628,6 +690,9 @@ require __DIR__ . '/../app/partials/header.php';
                     '<td>' + fmtNum(v.total_units) + '</td>' +
                     '<td>' + fmtNum(v.total_ml) + '</td>' +
                     '<td>' + fmtCurrency(v.total_revenue) + '</td>' +
+                    '<td class="col-group-fulfilled col-divide">' + fmtNum(v.fulfilled_units) + '</td>' +
+                    '<td class="col-group-fulfilled">' + fmtNum(v.fulfilled_ml) + '</td>' +
+                    '<td class="col-group-fulfilled">' + fmtCurrency(v.fulfilled_revenue) + '</td>' +
                     '<td><div class="pct-bar-wrap">' +
                         '<span class="pct-text">' + pct.toFixed(1) + '%</span>' +
                         '<span class="pct-bar" style="width:' + Math.round(barPct * 0.6) + 'px"></span>' +
