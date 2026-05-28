@@ -18,6 +18,15 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.9.0',
+        'date'    => '2026-05-28',
+        'title'   => 'Product Profitability now breaks out fulfilled orders',
+        'notes'   => [
+            'Reports -> Product Profitability now shows two sets of figures side by side: "All Orders" (every paid order, as before) and "Fulfilled" (only orders that have shipped).  Both the summary pills at the top and the per-variant table now carry a matching Fulfilled column group.',
+            'The difference between the two is, roughly, what has been sold but not yet decanted and shipped — useful for checking how much should still be left in a bottle against how much is already committed to pending orders.',
+        ],
+    ],
+    [
         'version' => '1.8.0',
         'date'    => '2026-05-21',
         'title'   => 'Refunded and removed items no longer print',
