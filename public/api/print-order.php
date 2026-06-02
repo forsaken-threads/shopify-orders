@@ -168,6 +168,11 @@ foreach ($items as $idx => $item) {
     $isOrderLabel  = ($ml === 'order');
     $isBundleLabel = ($ml === 'bundle');
 
+    // Items with no associated ML variant default to a 1ml label.
+    if (!$isOrderLabel && !$isBundleLabel && $ml === '') {
+        $ml = '1';
+    }
+
     if (!$isOrderLabel && !$isBundleLabel && !in_array($ml, $validMlSizes, true)) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Invalid or missing ML size for item: ' . $title]);

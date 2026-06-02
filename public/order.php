@@ -293,18 +293,16 @@ require __DIR__ . '/../app/partials/header.php';
                     <td class="price"><?= number_format($unitPrice * $qty, 2) ?></td>
                     <?php if ($order['status'] !== 'pending'): ?>
                     <td class="oneoff-print-cell">
-                        <?php if ($ml !== null): ?>
                         <button class="btn-oneoff-print"
                                 data-order-id="<?= $id ?>"
                                 data-title="<?= h($strippedTitle) ?>"
                                 data-full-title="<?= h($item['title']) ?>"
                                 data-brand="<?= h($displayBrand) ?>"
-                                data-ml="<?= h((string) $ml) ?>"
+                                data-ml="<?= h((string) ($ml ?? 1)) ?>"
                                 data-product-id="<?= h($item['shopify_product_id'] ?? '') ?>"
                                 data-preferred-title="<?= h($preferredTitle ?? '') ?>"
                                 data-preferred-brand="<?= h($preferredBrand ?? '') ?>"
                                 title="Print one label">Print</button>
-                        <?php endif; ?>
                     </td>
                     <?php endif; ?>
                 </tr>

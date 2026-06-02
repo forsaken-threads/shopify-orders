@@ -686,16 +686,16 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                     '<td>' + unitPrice.toFixed(2) + '</td>' +
                     '<td>' + (unitPrice * qty).toFixed(2) + '</td>' +
                     '<td class="oneoff-print-cell">' +
-                        (ml ? '<button class="btn-oneoff-print"' +
+                        '<button class="btn-oneoff-print"' +
                             ' data-order-id="' + esc(String(o.id)) + '"' +
                             ' data-title="' + esc(strippedTitle) + '"' +
                             ' data-full-title="' + esc(item.title) + '"' +
                             ' data-brand="' + esc(displayBrand) + '"' +
-                            ' data-ml="' + esc(ml) + '"' +
+                            ' data-ml="' + esc(ml || '1') + '"' +
                             ' data-product-id="' + esc(item.shopify_product_id || '') + '"' +
                             ' data-preferred-title="' + esc(preferredTitle || '') + '"' +
                             ' data-preferred-brand="' + esc(preferredBrand || '') + '"' +
-                            ' title="Print one label">Print</button>' : '') +
+                            ' title="Print one label">Print</button>' +
                     '</td>' +
                     '</tr>';
             }).join('');

@@ -452,7 +452,7 @@ var PrintModals = (function () {
                 : stripBrandPrefix(item.title, item.custom_brand);
             var preferredTitle = item.preferred_title != null ? item.preferred_title : '';
             var preferredBrand = item.preferred_brand != null ? item.preferred_brand : '';
-            var ml = item.variant_ml != null ? String(item.variant_ml) : '';
+            var ml = item.variant_ml != null ? String(item.variant_ml) : '1';
             var qty = Number(item.quantity);
             totalPrintQty += qty;
             return '<tr data-item-index="' + i + '">' +
@@ -872,7 +872,7 @@ var PrintModals = (function () {
         var title          = btn.dataset.title;
         var fullTitle      = btn.dataset.fullTitle;
         var brand          = btn.dataset.brand;
-        var ml             = btn.dataset.ml;
+        var ml             = btn.dataset.ml || '1';
         var productId      = btn.dataset.productId;
         var preferredTitle = btn.dataset.preferredTitle || '';
         var preferredBrand = btn.dataset.preferredBrand || '';

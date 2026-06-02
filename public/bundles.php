@@ -911,8 +911,7 @@ require __DIR__ . '/../app/partials/header.php';
                 ).join('');
             } else {
                 mlOptions =
-                    '<option value="" disabled selected>Select…</option>' +
-                    '<option value="1">1ml</option>' +
+                    '<option value="1" selected>1ml</option>' +
                     '<option value="5">5ml</option>' +
                     '<option value="10">10ml</option>';
             }
