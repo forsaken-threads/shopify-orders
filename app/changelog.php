@@ -18,6 +18,15 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.10.0',
+        'date'    => '2026-06-02',
+        'title'   => 'Items without an ML size default to 1ml when printing',
+        'notes'   => [
+            'When a line item has no ML size associated with it, label printing now treats it as a 1ml instead of leaving it blank.  Previously such an item hid its one-off Print button and would fail with an "Invalid or missing ML size" error if printed as part of a full order.',
+            'This applies everywhere labels are printed: the full-order print modal, the one-off print button on the order detail and orders pages, and bundle component rows that have no ML variants (their ML dropdown now defaults to 1ml).',
+        ],
+    ],
+    [
         'version' => '1.9.0',
         'date'    => '2026-05-28',
         'title'   => 'Product Profitability now breaks out fulfilled orders',
