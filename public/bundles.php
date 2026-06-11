@@ -49,16 +49,24 @@ $bundles = $stmt->fetchAll();
 // Kept as a simple flat list — completed bundle count stays low in practice,
 // so pagination and search aren't worth the complexity.
 
+// Draft bundles are included so labels for previous orders can still be
+// printed after a bundle is retired in Shopify.  They're hidden behind an
+// opt-in checkbox in the UI (default off) and badged when shown.
 $completeBundles = $db->query("
-    SELECT p.id, p.shopify_product_id, p.title, p.vendor,
+    SELECT p.id, p.shopify_product_id, p.title, p.vendor, p.status,
            (SELECT COUNT(*) FROM bundle_components bc WHERE bc.bundle_product_id = p.id) AS component_count
     FROM   products      p
     JOIN   bundle_states s ON s.product_id = p.id AND s.is_complete = 1
     WHERE  p.is_bundle  = 1
-      AND  p.status     = 'active'
+      AND  p.status     IN ('active', 'draft')
       AND  p.deleted_at IS NULL
     ORDER  BY p.title
 ")->fetchAll();
+
+$hasDraftComplete = false;
+foreach ($completeBundles as $b) {
+    if ($b['status'] === 'draft') { $hasDraftComplete = true; break; }
+}
 
 function bundlesPageUrl(int $page): string
 {
@@ -142,6 +150,34 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     .btn-print-bundle:hover { background: #2d2d5e; border-color: #2d2d5e; }
+
+    .bundle-status-badge {
+        display: inline-block;
+        margin-left: .45rem;
+        padding: .1rem .45rem;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+        border-radius: 999px;
+        font-size: .68rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        vertical-align: middle;
+    }
+
+    .lookup-filter {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        margin: 1rem 0;
+        font-size: .85rem;
+        color: #555;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .lookup-filter input { cursor: pointer; }
 
     .empty-state-bundles {
         padding: 2.5rem 1rem;
@@ -474,7 +510,13 @@ require __DIR__ . '/../app/partials/header.php';
                         <p>Curate a bundle's components in Bundle Management and mark it complete to see it here.</p>
                     </div>
                 <?php else: ?>
-                    <div class="bundle-table-wrap">
+                    <?php if ($hasDraftComplete): ?>
+                        <label class="lookup-filter">
+                            <input type="checkbox" id="include-drafts-cb">
+                            Include draft bundles
+                        </label>
+                    <?php endif; ?>
+                    <div class="bundle-table-wrap" id="lookup-table-wrap">
                         <table class="bundle-table">
                             <thead>
                                 <tr>
@@ -486,8 +528,12 @@ require __DIR__ . '/../app/partials/header.php';
                             </thead>
                             <tbody id="complete-bundles-rows">
                             <?php foreach ($completeBundles as $b): ?>
-                                <tr data-bundle-id="<?= (int) $b['id'] ?>">
-                                    <td><?= h($b['title']) ?></td>
+                                <?php $isDraft = $b['status'] === 'draft'; ?>
+                                <tr data-bundle-id="<?= (int) $b['id'] ?>"<?= $isDraft ? ' class="bundle-row-draft" hidden' : '' ?>>
+                                    <td>
+                                        <?= h($b['title']) ?>
+                                        <?php if ($isDraft): ?><span class="bundle-status-badge">Draft</span><?php endif; ?>
+                                    </td>
                                     <td class="hide-mobile"><?= h($b['vendor'] ?? '') ?></td>
                                     <td class="col-count"><?= (int) $b['component_count'] ?></td>
                                     <td class="col-action">
@@ -506,6 +552,10 @@ require __DIR__ . '/../app/partials/header.php';
                             <?php endforeach; ?>
                             </tbody>
                         </table>
+                    </div>
+                    <div class="empty-state-bundles" id="lookup-drafts-hidden" hidden>
+                        <strong>No active completed bundles.</strong>
+                        <p>Check "Include draft bundles" above to print labels for bundles that have gone to draft.</p>
                     </div>
                 <?php endif; ?>
             </div>
@@ -789,6 +839,27 @@ require __DIR__ . '/../app/partials/header.php';
             });
         });
     });
+
+    // "Include draft bundles" filter — drafts start hidden; toggling reveals
+    // them.  When the only completed bundles are drafts, hide the empty table
+    // and show a hint instead.
+    const includeDraftsCb = document.getElementById('include-drafts-cb');
+    if (includeDraftsCb) {
+        const draftRows = document.querySelectorAll('#complete-bundles-rows tr.bundle-row-draft');
+        const allRows   = document.querySelectorAll('#complete-bundles-rows tr');
+        const tableWrap = document.getElementById('lookup-table-wrap');
+        const emptyNote = document.getElementById('lookup-drafts-hidden');
+
+        const refreshDraftVisibility = () => {
+            const show = includeDraftsCb.checked;
+            draftRows.forEach(r => { r.hidden = !show; });
+            const anyVisible = Array.from(allRows).some(r => !r.hidden);
+            tableWrap.hidden = !anyVisible;
+            emptyNote.hidden = anyVisible;
+        };
+        includeDraftsCb.addEventListener('change', refreshDraftVisibility);
+        refreshDraftVisibility();
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Bundle Print Modal
