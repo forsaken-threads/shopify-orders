@@ -18,6 +18,15 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.11.0',
+        'date'    => '2026-06-11',
+        'title'   => 'Print labels for bundles that have gone to draft',
+        'notes'   => [
+            'Bundle Lookup can now show completed bundles whose Shopify product has been set to draft, so you can reprint labels for previous orders without having to reactivate a product you no longer carry.',
+            'Draft bundles stay hidden by default.  Tick the new "Include draft bundles" checkbox above the lookup list to reveal them; each draft bundle is marked with a "Draft" badge.  The checkbox only appears when there is at least one completed draft bundle.',
+        ],
+    ],
+    [
         'version' => '1.10.0',
         'date'    => '2026-06-02',
         'title'   => 'Items without an ML size default to 1ml when printing',
