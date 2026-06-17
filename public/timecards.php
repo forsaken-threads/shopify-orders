@@ -491,6 +491,21 @@ require __DIR__ . '/../app/partials/header.php';
 
     .picker-card .picker-spacer { flex: 1; }
 
+    .btn-statement {
+        display: inline-flex;
+        align-items: center;
+        padding: .42rem .9rem;
+        border: 1px solid #1a1a2e;
+        border-radius: 6px;
+        font-size: .82rem;
+        font-weight: 600;
+        color: #1a1a2e;
+        background: #fff;
+        text-decoration: none;
+    }
+
+    .btn-statement:hover { background: #1a1a2e; color: #fff; }
+
     .empty-pick {
         background: #fff;
         border-radius: 10px;
@@ -750,6 +765,11 @@ require __DIR__ . '/../app/partials/header.php';
             <?php endif; ?>
         </div>
         <div class="picker-spacer"></div>
+        <?php if ($target !== null && $targetPaidHourly): ?>
+            <a class="btn-statement"
+               href="earnings-statement.php?<?= h(http_build_query(['user_id' => (int) $target['id']])) ?>"
+               target="_blank" rel="noopener">Earnings statement</a>
+        <?php endif; ?>
     </form>
 
     <?php if ($target === null): ?>
