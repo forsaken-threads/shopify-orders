@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.12.0',
+        'date'    => '2026-06-17',
+        'title'   => 'Printable earnings statement for an employee',
+        'notes'   => [
+            'The Time cards page now has an "Earnings statement" button that appears once you pick an hourly employee.  It opens a clean, official-looking sheet of that employee\'s paid weeks for the year -- week ending, hours, pay rate, amount, and the date paid -- with a total at the bottom, ready to print or save as a PDF.',
+            'Only weeks that have been marked paid are listed, and the dollar figures are exactly what was recorded as paid at the time -- so the statement always matches what was actually disbursed.  It only ever reflects pay tracked in the system; nothing from before is included.',
+            'Defaults to the current year.  If an employee has paid weeks spanning more than one year, a year picker appears so you can print a statement for an earlier year.',
+        ],
+    ],
+    [
         'version' => '1.11.0',
         'date'    => '2026-06-11',
         'title'   => 'Print labels for bundles that have gone to draft',
