@@ -209,6 +209,20 @@ require __DIR__ . '/../app/partials/header.php';
         margin-top: .4rem;
     }
 
+    .es-contact {
+        margin-top: .7rem;
+        font-size: .78rem;
+        color: #555;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: .35rem .9rem;
+    }
+
+    .es-contact a { color: inherit; text-decoration: none; }
+    .es-contact a:hover { text-decoration: underline; }
+    .es-contact .sep { color: #ccc; }
+
     .es-meta {
         display: flex;
         flex-wrap: wrap;
@@ -309,6 +323,13 @@ require __DIR__ . '/../app/partials/header.php';
     <div class="es-letterhead">
         <div class="es-company">Decantalize</div>
         <div class="es-doc-title">Earnings Statement</div>
+        <div class="es-contact">
+            <span><a href="tel:<?= h(preg_replace('/[^0-9+]/', '', (string) $config['company_phone'])) ?>"><?= h((string) $config['company_phone']) ?></a></span>
+            <span class="sep">&bull;</span>
+            <span><a href="https://<?= h((string) $config['company_website']) ?>"><?= h((string) $config['company_website']) ?></a></span>
+            <span class="sep">&bull;</span>
+            <span><a href="mailto:<?= h((string) $config['company_email']) ?>"><?= h((string) $config['company_email']) ?></a></span>
+        </div>
     </div>
 
     <div class="es-meta">

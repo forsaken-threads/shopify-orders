@@ -103,4 +103,10 @@ return [
         $raw = strtolower((string) (getenv('PAY_WEEK_START') ?: 'sun'));
         return in_array($raw, ['sun', 'mon', 'sat'], true) ? $raw : 'sun';
     })(),
+    // Company contact details shown on official documents (e.g. the printable
+    // earnings statement letterhead).  Defaults match Decantalize's published
+    // contact info; override per-deployment in env.ini.
+    'company_phone'          => (string) (getenv('COMPANY_PHONE')   ?: '248-313-8711'),
+    'company_website'        => (string) (getenv('COMPANY_WEBSITE') ?: 'decantalize.com'),
+    'company_email'          => (string) (getenv('COMPANY_EMAIL')   ?: 'sales@decantalize.com'),
 ];
