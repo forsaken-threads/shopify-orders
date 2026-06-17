@@ -18,6 +18,14 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.13.0',
+        'date'    => '2026-06-17',
+        'title'   => 'Company contact details on the earnings statement',
+        'notes'   => [
+            'The printable earnings statement now shows the company phone number, website, and email beneath the title in the letterhead, so a printed or PDF copy carries our contact information.',
+        ],
+    ],
+    [
         'version' => '1.12.0',
         'date'    => '2026-06-17',
         'title'   => 'Printable earnings statement for an employee',
