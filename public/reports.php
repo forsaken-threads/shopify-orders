@@ -348,6 +348,101 @@ require __DIR__ . '/../app/partials/header.php';
         .summary-pill { min-width: 100px; }
     }
 
+    /* ── Top Customers card ── */
+    .tc-controls {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        flex-wrap: wrap;
+        margin-top: 1.25rem;
+    }
+
+    .tc-control-label { font-size: .85rem; color: #555; }
+
+    .tc-limit-input {
+        width: 5rem;
+        padding: .5rem .6rem;
+        font-size: .88rem;
+        font-family: inherit;
+        border: 1px solid #d1d5db;
+        border-radius: 7px;
+        color: #1a1a2e;
+        background: #fff;
+    }
+
+    .tc-limit-input:focus {
+        outline: none;
+        border-color: #1a1a2e;
+        box-shadow: 0 0 0 3px rgba(26,26,46,.08);
+    }
+
+    .tc-load-btn {
+        padding: .5rem 1.25rem;
+        background: #1a1a2e;
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: .85rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s;
+    }
+
+    .tc-load-btn:hover { background: #2d2d5e; }
+    .tc-load-btn:disabled { opacity: .5; cursor: default; }
+
+    .tc-results-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .tc-results-count { font-size: .85rem; color: #555; font-weight: 600; }
+
+    .tc-table-wrap {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: auto;
+    }
+
+    .tc-table { width: 100%; border-collapse: collapse; }
+
+    .tc-table thead { background: #1a1a2e; color: #fff; }
+
+    .tc-table th {
+        padding: .6rem 1rem;
+        text-align: left;
+        font-size: .72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        white-space: nowrap;
+    }
+
+    .tc-table th.tc-col-num { text-align: right; }
+
+    .tc-table td {
+        padding: .6rem 1rem;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: .85rem;
+        vertical-align: top;
+    }
+
+    .tc-table tbody tr:last-child td { border-bottom: none; }
+    .tc-table tbody tr:hover td { background: #fafafa; }
+
+    .tc-col-rank { width: 2.5rem; text-align: right; color: #888; font-variant-numeric: tabular-nums; }
+    .tc-col-num  { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .tc-cust-name  { font-weight: 600; color: #1a1a2e; }
+    .tc-cust-email { font-size: .75rem; color: #888; margin-top: .15rem; }
+    .tc-addr       { color: #444; line-height: 1.45; }
+    .tc-addr-missing { color: #c0392b; font-style: italic; }
+    .tc-spent      { font-weight: 700; }
+
 </style>
 
 <div class="reports-wrap">
@@ -484,6 +579,73 @@ require __DIR__ . '/../app/partials/header.php';
                     </div>
 
                     <p class="source-note" id="pp-source-note"></p>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 2: Top Customers ── -->
+        <div class="accordion-card" id="card-top-customers">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-top-customers"
+                 onclick="toggleAccordion('card-top-customers')">
+                <div class="accordion-header-icon">
+                    <!-- users icon -->
+                    <svg viewBox="0 0 24 24">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Top Customers</h2>
+                    <p>Highest-spending customers with mailing addresses — view or export a spreadsheet.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-top-customers">
+
+                <div class="tc-controls">
+                    <label class="tc-control-label" for="tc-limit">Show top</label>
+                    <input type="number" id="tc-limit" class="tc-limit-input"
+                           value="100" min="1" max="1000" step="1">
+                    <span class="tc-control-label">customers by spend</span>
+                    <button type="button" class="tc-load-btn" id="tc-load-btn">Load</button>
+                    <a class="btn-download" id="tc-csv-btn" href="#">Download CSV</a>
+                </div>
+
+                <!-- Loading -->
+                <div class="lookup-loading" id="tc-loading">
+                    <div class="spinner"></div>
+                    Crunching customer spend…
+                </div>
+
+                <!-- Error -->
+                <div class="lookup-error" id="tc-error"></div>
+
+                <!-- Results -->
+                <div class="results-area" id="tc-results">
+                    <div class="tc-results-header">
+                        <span class="tc-results-count" id="tc-count"></span>
+                    </div>
+                    <div class="tc-table-wrap">
+                        <table class="tc-table">
+                            <thead>
+                                <tr>
+                                    <th class="tc-col-rank">#</th>
+                                    <th>Customer</th>
+                                    <th>Mailing Address</th>
+                                    <th class="tc-col-num">Orders</th>
+                                    <th class="tc-col-num">Total Spent</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tc-rows"></tbody>
+                        </table>
+                    </div>
                 </div>
 
             </div><!-- /accordion-body -->
@@ -718,6 +880,112 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
 })();
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    // escHtml, apiUrl and toggleAccordion are provided by app/partials/header.php.
+
+    // ── Top Customers lookup ────────────────────────────────────────────────────
+
+    const limitInput = document.getElementById('tc-limit');
+    const loadBtn    = document.getElementById('tc-load-btn');
+    const csvBtn     = document.getElementById('tc-csv-btn');
+    const loadingEl  = document.getElementById('tc-loading');
+    const errorEl    = document.getElementById('tc-error');
+    const resultsEl  = document.getElementById('tc-results');
+    const countEl    = document.getElementById('tc-count');
+    const rowsEl     = document.getElementById('tc-rows');
+
+    function clampLimit() {
+        let n = parseInt(limitInput.value, 10);
+        if (!Number.isFinite(n) || n < 1) n = 1;
+        if (n > 1000) n = 1000;
+        return n;
+    }
+
+    function fmtCurrency(n) {
+        return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function addressHtml(c) {
+        const lines = [];
+        if (c.company)  lines.push(escHtml(c.company));
+        if (c.address1) lines.push(escHtml(c.address1));
+        if (c.address2) lines.push(escHtml(c.address2));
+        let cityLine = [c.city, c.state].filter(Boolean).join(', ');
+        if (c.zip) cityLine = (cityLine ? cityLine + ' ' : '') + c.zip;
+        if (cityLine) lines.push(escHtml(cityLine));
+        if (c.country && c.country !== 'US') lines.push(escHtml(c.country));
+        return lines.length ? lines.join('<br>') : '<span class="tc-addr-missing">No address on file</span>';
+    }
+
+    function load() {
+        const n = clampLimit();
+        limitInput.value = n;
+        loadBtn.disabled = true;
+        errorEl.classList.remove('visible');
+        resultsEl.classList.remove('visible');
+        loadingEl.classList.add('visible');
+
+        fetch(apiUrl('top-customers.php?limit=' + n))
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
+                return r.json();
+            })
+            .then(function (data) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                render(data);
+            })
+            .catch(function (msg) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                errorEl.textContent = typeof msg === 'string' ? msg : 'Failed to load customers.';
+                errorEl.classList.add('visible');
+            });
+    }
+
+    function render(data) {
+        const list = data.customers || [];
+        countEl.textContent = 'Top ' + list.length + ' customer' + (list.length === 1 ? '' : 's') + ' by lifetime spend';
+
+        rowsEl.innerHTML = '';
+        if (list.length === 0) {
+            rowsEl.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:1.5rem;">No customers found.</td></tr>';
+        } else {
+            let html = '';
+            list.forEach(function (c) {
+                html += '<tr>' +
+                    '<td class="tc-col-rank">' + c.rank + '</td>' +
+                    '<td><div class="tc-cust-name">' + escHtml(c.name || '—') + '</div>' +
+                        '<div class="tc-cust-email">' + escHtml(c.email) + '</div></td>' +
+                    '<td class="tc-addr">' + addressHtml(c) + '</td>' +
+                    '<td class="tc-col-num">' + Number(c.order_count).toLocaleString() + '</td>' +
+                    '<td class="tc-col-num tc-spent">' + fmtCurrency(c.spent) + '</td>' +
+                    '</tr>';
+            });
+            rowsEl.innerHTML = html;
+        }
+        resultsEl.classList.add('visible');
+    }
+
+    loadBtn.addEventListener('click', load);
+
+    limitInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); load(); }
+    });
+
+    // CSV downloads directly from the current limit — no need to load the table first.
+    csvBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const n = clampLimit();
+        limitInput.value = n;
+        window.location.href = apiUrl('top-customers.php?format=csv&limit=' + n);
+    });
+}());
 </script>
 
 <?php require __DIR__ . '/../app/partials/footer.php'; ?>
