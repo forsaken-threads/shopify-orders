@@ -18,6 +18,15 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.14.0',
+        'date'    => '2026-07-10',
+        'title'   => 'Top Customers report with mailing addresses',
+        'notes'   => [
+            'The Reports page has a new "Top Customers" section that lists your highest-spending customers along with their mailing addresses.  Choose how many to show (100 by default) and press Load to see the ranking on screen, or press Download CSV to save the whole list as a spreadsheet.',
+            'Each row shows the customer\'s name, email, number of orders, total spent, and the mailing address from their most recent order -- everything you need to send them something in the mail.',
+        ],
+    ],
+    [
         'version' => '1.13.0',
         'date'    => '2026-06-17',
         'title'   => 'Company contact details on the earnings statement',
