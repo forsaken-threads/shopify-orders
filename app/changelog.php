@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.15.0',
+        'date'    => '2026-07-10',
+        'title'   => 'Rank top customers by items or spend-per-item, over any timeframe',
+        'notes'   => [
+            'The Top Customers report can now rank three ways: total amount spent (the original), total number of items purchased, and average spend per item.  The "spend per item" view only considers customers who buy in real volume (the top ~40% by item count), so a single big one-off order does not float someone to the top.',
+            'Each row now shows orders, items, total spent, and dollars-per-item together, and the column being used to rank is highlighted so it is clear what the list is sorted by.',
+            'A timeframe picker lets you limit the ranking to a recent window -- all time, the last 30 or 90 days, year to date, or the trailing 12 months -- handy for finding who has been buying lately rather than ever.  The Download CSV button always matches whatever ranking and timeframe you have selected.',
+        ],
+    ],
+    [
         'version' => '1.14.0',
         'date'    => '2026-07-10',
         'title'   => 'Top Customers report with mailing addresses',
