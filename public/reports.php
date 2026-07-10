@@ -376,6 +376,23 @@ require __DIR__ . '/../app/partials/header.php';
         box-shadow: 0 0 0 3px rgba(26,26,46,.08);
     }
 
+    .tc-period-select {
+        padding: .5rem .6rem;
+        font-size: .88rem;
+        font-family: inherit;
+        border: 1px solid #d1d5db;
+        border-radius: 7px;
+        color: #1a1a2e;
+        background: #fff;
+        cursor: pointer;
+    }
+
+    .tc-period-select:focus {
+        outline: none;
+        border-color: #1a1a2e;
+        box-shadow: 0 0 0 3px rgba(26,26,46,.08);
+    }
+
     .tc-load-btn {
         padding: .5rem 1.25rem;
         background: #1a1a2e;
@@ -441,7 +458,33 @@ require __DIR__ . '/../app/partials/header.php';
     .tc-cust-email { font-size: .75rem; color: #888; margin-top: .15rem; }
     .tc-addr       { color: #444; line-height: 1.45; }
     .tc-addr-missing { color: #c0392b; font-style: italic; }
-    .tc-spent      { font-weight: 700; }
+
+    .tc-modes {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        margin-top: 1.25rem;
+    }
+
+    .tc-modes .filter-link { font-family: inherit; cursor: pointer; }
+
+    .tc-mode-note {
+        font-size: .8rem;
+        color: #666;
+        margin-top: .85rem;
+        line-height: 1.45;
+    }
+
+    .tc-mode-note:empty { display: none; }
+
+    /* Highlight the column the active mode ranks by. */
+    .tc-table.mode-spend   th.col-spent,
+    .tc-table.mode-items   th.col-items,
+    .tc-table.mode-peritem th.col-peritem  { background: #2d2d5e; }
+
+    .tc-table.mode-spend   td.col-spent,
+    .tc-table.mode-items   td.col-items,
+    .tc-table.mode-peritem td.col-peritem  { background: #f5f7ff; font-weight: 700; color: #1a1a2e; }
 
 </style>
 
@@ -609,14 +652,29 @@ require __DIR__ . '/../app/partials/header.php';
 
             <div class="accordion-body" id="body-top-customers">
 
+                <div class="tc-modes" id="tc-modes" role="tablist" aria-label="Ranking basis">
+                    <button type="button" class="filter-link active" data-mode="spend"    role="tab" aria-selected="true">Total spend</button>
+                    <button type="button" class="filter-link"        data-mode="items"    role="tab" aria-selected="false">Total items</button>
+                    <button type="button" class="filter-link"        data-mode="per_item" role="tab" aria-selected="false">Spend per item</button>
+                </div>
+
                 <div class="tc-controls">
                     <label class="tc-control-label" for="tc-limit">Show top</label>
                     <input type="number" id="tc-limit" class="tc-limit-input"
                            value="100" min="1" max="1000" step="1">
-                    <span class="tc-control-label">customers by spend</span>
+                    <span class="tc-control-label">customers over</span>
+                    <select id="tc-period" class="tc-period-select" aria-label="Timeframe">
+                        <option value="all" selected>All time</option>
+                        <option value="30d">Last 30 days</option>
+                        <option value="90d">Last 90 days</option>
+                        <option value="ytd">Year to date</option>
+                        <option value="ttm">Trailing 12 months</option>
+                    </select>
                     <button type="button" class="tc-load-btn" id="tc-load-btn">Load</button>
                     <a class="btn-download" id="tc-csv-btn" href="#">Download CSV</a>
                 </div>
+
+                <p class="tc-mode-note" id="tc-mode-note"></p>
 
                 <!-- Loading -->
                 <div class="lookup-loading" id="tc-loading">
@@ -633,14 +691,16 @@ require __DIR__ . '/../app/partials/header.php';
                         <span class="tc-results-count" id="tc-count"></span>
                     </div>
                     <div class="tc-table-wrap">
-                        <table class="tc-table">
+                        <table class="tc-table mode-spend" id="tc-table">
                             <thead>
                                 <tr>
                                     <th class="tc-col-rank">#</th>
                                     <th>Customer</th>
                                     <th>Mailing Address</th>
-                                    <th class="tc-col-num">Orders</th>
-                                    <th class="tc-col-num">Total Spent</th>
+                                    <th class="tc-col-num col-orders">Orders</th>
+                                    <th class="tc-col-num col-items">Items</th>
+                                    <th class="tc-col-num col-spent">Total Spent</th>
+                                    <th class="tc-col-num col-peritem">$/Item</th>
                                 </tr>
                             </thead>
                             <tbody id="tc-rows"></tbody>
@@ -893,11 +953,23 @@ require __DIR__ . '/../app/partials/header.php';
     const limitInput = document.getElementById('tc-limit');
     const loadBtn    = document.getElementById('tc-load-btn');
     const csvBtn     = document.getElementById('tc-csv-btn');
+    const modesEl    = document.getElementById('tc-modes');
+    const periodEl   = document.getElementById('tc-period');
+    const noteEl     = document.getElementById('tc-mode-note');
     const loadingEl  = document.getElementById('tc-loading');
     const errorEl    = document.getElementById('tc-error');
     const resultsEl  = document.getElementById('tc-results');
     const countEl    = document.getElementById('tc-count');
+    const tableEl    = document.getElementById('tc-table');
     const rowsEl     = document.getElementById('tc-rows');
+
+    let activeMode = 'spend';
+
+    const MODE_CLASS = { spend: 'mode-spend', items: 'mode-items', per_item: 'mode-peritem' };
+    const PERIOD_LABEL = {
+        all: 'All time', '30d': 'Last 30 days', '90d': 'Last 90 days',
+        ytd: 'Year to date', ttm: 'Trailing 12 months',
+    };
 
     function clampLimit() {
         let n = parseInt(limitInput.value, 10);
@@ -909,6 +981,8 @@ require __DIR__ . '/../app/partials/header.php';
     function fmtCurrency(n) {
         return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+
+    function fmtInt(n) { return Number(n).toLocaleString(); }
 
     function addressHtml(c) {
         const lines = [];
@@ -922,6 +996,19 @@ require __DIR__ . '/../app/partials/header.php';
         return lines.length ? lines.join('<br>') : '<span class="tc-addr-missing">No address on file</span>';
     }
 
+    function noteFor(data) {
+        if (data.mode === 'items') {
+            return 'Ranked by total number of items purchased across all orders.';
+        }
+        if (data.mode === 'per_item') {
+            const pct = data.total_customers ? Math.round(100 * data.pool_size / data.total_customers) : 0;
+            return 'Ranked by average spend per item (total spent ÷ items), among the ' +
+                fmtInt(data.pool_size) + ' customers with at least ' + fmtInt(data.item_floor) +
+                ' items purchased — the top ' + pct + '% by volume.';
+        }
+        return 'Ranked by total amount spent across all orders.';
+    }
+
     function load() {
         const n = clampLimit();
         limitInput.value = n;
@@ -930,7 +1017,7 @@ require __DIR__ . '/../app/partials/header.php';
         resultsEl.classList.remove('visible');
         loadingEl.classList.add('visible');
 
-        fetch(apiUrl('top-customers.php?limit=' + n))
+        fetch(apiUrl('top-customers.php?mode=' + encodeURIComponent(activeMode) + '&period=' + encodeURIComponent(periodEl.value) + '&limit=' + n))
             .then(function (r) {
                 if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
                 return r.json();
@@ -950,11 +1037,14 @@ require __DIR__ . '/../app/partials/header.php';
 
     function render(data) {
         const list = data.customers || [];
-        countEl.textContent = 'Top ' + list.length + ' customer' + (list.length === 1 ? '' : 's') + ' by lifetime spend';
+        tableEl.className = 'tc-table ' + (MODE_CLASS[data.mode] || 'mode-spend');
+        countEl.textContent = 'Top ' + list.length + ' customer' + (list.length === 1 ? '' : 's') +
+            ' · ' + (PERIOD_LABEL[data.period] || 'All time');
+        noteEl.textContent = noteFor(data);
 
         rowsEl.innerHTML = '';
         if (list.length === 0) {
-            rowsEl.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:1.5rem;">No customers found.</td></tr>';
+            rowsEl.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:1.5rem;">No customers found.</td></tr>';
         } else {
             let html = '';
             list.forEach(function (c) {
@@ -963,8 +1053,10 @@ require __DIR__ . '/../app/partials/header.php';
                     '<td><div class="tc-cust-name">' + escHtml(c.name || '—') + '</div>' +
                         '<div class="tc-cust-email">' + escHtml(c.email) + '</div></td>' +
                     '<td class="tc-addr">' + addressHtml(c) + '</td>' +
-                    '<td class="tc-col-num">' + Number(c.order_count).toLocaleString() + '</td>' +
-                    '<td class="tc-col-num tc-spent">' + fmtCurrency(c.spent) + '</td>' +
+                    '<td class="tc-col-num col-orders">' + fmtInt(c.order_count) + '</td>' +
+                    '<td class="tc-col-num col-items">' + fmtInt(c.items) + '</td>' +
+                    '<td class="tc-col-num col-spent">' + fmtCurrency(c.spent) + '</td>' +
+                    '<td class="tc-col-num col-peritem">' + fmtCurrency(c.per_item) + '</td>' +
                     '</tr>';
             });
             rowsEl.innerHTML = html;
@@ -972,18 +1064,41 @@ require __DIR__ . '/../app/partials/header.php';
         resultsEl.classList.add('visible');
     }
 
+    function setMode(mode) {
+        if (mode === activeMode) return;
+        activeMode = mode;
+        modesEl.querySelectorAll('.filter-link').forEach(function (b) {
+            const on = b.dataset.mode === mode;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+    }
+
+    modesEl.addEventListener('click', function (e) {
+        const btn = e.target.closest('.filter-link');
+        if (!btn) return;
+        setMode(btn.dataset.mode);
+        load();
+    });
+
     loadBtn.addEventListener('click', load);
 
     limitInput.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); load(); }
     });
 
-    // CSV downloads directly from the current limit — no need to load the table first.
+    // Re-run when the timeframe changes (only if results are already showing).
+    periodEl.addEventListener('change', function () {
+        if (resultsEl.classList.contains('visible')) load();
+    });
+
+    // CSV downloads directly from the current mode + period + limit — no need to load the table first.
     csvBtn.addEventListener('click', function (e) {
         e.preventDefault();
         const n = clampLimit();
         limitInput.value = n;
-        window.location.href = apiUrl('top-customers.php?format=csv&limit=' + n);
+        window.location.href = apiUrl('top-customers.php?format=csv&mode=' + encodeURIComponent(activeMode) +
+            '&period=' + encodeURIComponent(periodEl.value) + '&limit=' + n);
     });
 }());
 </script>
