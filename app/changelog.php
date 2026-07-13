@@ -18,6 +18,17 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.16.0',
+        'date'    => '2026-07-13',
+        'title'   => 'Top Customers: rank by orders, and compare any window against all time',
+        'notes'   => [
+            'The Top Customers report now ranks five ways: total spent, total orders, total items, spend per order (average order value), and spend per item.',
+            'The "spend per order" view only considers repeat customers -- those with at least two orders -- so it shows who reliably places large orders rather than who happened to place one big one.  "Spend per item" keeps its existing volume floor.',
+            'When you pick a timeframe other than all time, a new column on the right shows each customer\'s lifetime figure for whatever you are ranking by.  Someone with 12 orders in the last year and 35 all time reads very differently from someone with 12 and 12, and now you can see which is which at a glance.',
+            'The report now opens on the last 30 days instead of all time, so recent activity is what you see first.  The Download CSV button still matches whatever ranking and timeframe you have selected, lifetime column included.',
+        ],
+    ],
+    [
         'version' => '1.15.0',
         'date'    => '2026-07-10',
         'title'   => 'Rank top customers by items or spend-per-item, over any timeframe',
