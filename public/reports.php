@@ -478,13 +478,23 @@ require __DIR__ . '/../app/partials/header.php';
     .tc-mode-note:empty { display: none; }
 
     /* Highlight the column the active mode ranks by. */
-    .tc-table.mode-spend   th.col-spent,
-    .tc-table.mode-items   th.col-items,
-    .tc-table.mode-peritem th.col-peritem  { background: #2d2d5e; }
+    .tc-table.mode-spend    th.col-spent,
+    .tc-table.mode-orders   th.col-orders,
+    .tc-table.mode-items    th.col-items,
+    .tc-table.mode-perorder th.col-perorder,
+    .tc-table.mode-peritem  th.col-peritem  { background: #2d2d5e; }
 
-    .tc-table.mode-spend   td.col-spent,
-    .tc-table.mode-items   td.col-items,
-    .tc-table.mode-peritem td.col-peritem  { background: #f5f7ff; font-weight: 700; color: #1a1a2e; }
+    .tc-table.mode-spend    td.col-spent,
+    .tc-table.mode-orders   td.col-orders,
+    .tc-table.mode-items    td.col-items,
+    .tc-table.mode-perorder td.col-perorder,
+    .tc-table.mode-peritem  td.col-peritem  { background: #f5f7ff; font-weight: 700; color: #1a1a2e; }
+
+    /* The lifetime-comparison column, shown only for a bounded timeframe. */
+    .tc-table th[hidden] { display: none; }
+
+    .tc-table th.col-alltime { background: #3d3d6b; }
+    .tc-table td.col-alltime { color: #666; border-left: 1px solid #e2e8f0; }
 
 </style>
 
@@ -643,7 +653,7 @@ require __DIR__ . '/../app/partials/header.php';
                 </div>
                 <div class="accordion-header-text">
                     <h2>Top Customers</h2>
-                    <p>Highest-spending customers with mailing addresses — view or export a spreadsheet.</p>
+                    <p>Rank customers by spend, orders or items over any timeframe — with mailing addresses to view or export.</p>
                 </div>
                 <div class="accordion-chevron">
                     <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
@@ -653,9 +663,11 @@ require __DIR__ . '/../app/partials/header.php';
             <div class="accordion-body" id="body-top-customers">
 
                 <div class="tc-modes" id="tc-modes" role="tablist" aria-label="Ranking basis">
-                    <button type="button" class="filter-link active" data-mode="spend"    role="tab" aria-selected="true">Total spend</button>
-                    <button type="button" class="filter-link"        data-mode="items"    role="tab" aria-selected="false">Total items</button>
-                    <button type="button" class="filter-link"        data-mode="per_item" role="tab" aria-selected="false">Spend per item</button>
+                    <button type="button" class="filter-link active" data-mode="spend"     role="tab" aria-selected="true">Total spend</button>
+                    <button type="button" class="filter-link"        data-mode="orders"    role="tab" aria-selected="false">Total orders</button>
+                    <button type="button" class="filter-link"        data-mode="items"     role="tab" aria-selected="false">Total items</button>
+                    <button type="button" class="filter-link"        data-mode="per_order" role="tab" aria-selected="false">Spend per order</button>
+                    <button type="button" class="filter-link"        data-mode="per_item"  role="tab" aria-selected="false">Spend per item</button>
                 </div>
 
                 <div class="tc-controls">
@@ -664,11 +676,11 @@ require __DIR__ . '/../app/partials/header.php';
                            value="100" min="1" max="1000" step="1">
                     <span class="tc-control-label">customers over</span>
                     <select id="tc-period" class="tc-period-select" aria-label="Timeframe">
-                        <option value="all" selected>All time</option>
-                        <option value="30d">Last 30 days</option>
+                        <option value="30d" selected>Last 30 days</option>
                         <option value="90d">Last 90 days</option>
                         <option value="ytd">Year to date</option>
                         <option value="ttm">Trailing 12 months</option>
+                        <option value="all">All time</option>
                     </select>
                     <button type="button" class="tc-load-btn" id="tc-load-btn">Load</button>
                     <a class="btn-download" id="tc-csv-btn" href="#">Download CSV</a>
@@ -700,7 +712,9 @@ require __DIR__ . '/../app/partials/header.php';
                                     <th class="tc-col-num col-orders">Orders</th>
                                     <th class="tc-col-num col-items">Items</th>
                                     <th class="tc-col-num col-spent">Total Spent</th>
+                                    <th class="tc-col-num col-perorder">$/Order</th>
                                     <th class="tc-col-num col-peritem">$/Item</th>
+                                    <th class="tc-col-num col-alltime" id="tc-alltime-head" hidden>All Time</th>
                                 </tr>
                             </thead>
                             <tbody id="tc-rows"></tbody>
@@ -962,10 +976,23 @@ require __DIR__ . '/../app/partials/header.php';
     const countEl    = document.getElementById('tc-count');
     const tableEl    = document.getElementById('tc-table');
     const rowsEl     = document.getElementById('tc-rows');
+    const allTimeTh  = document.getElementById('tc-alltime-head');
 
     let activeMode = 'spend';
 
-    const MODE_CLASS = { spend: 'mode-spend', items: 'mode-items', per_item: 'mode-peritem' };
+    const MODE_CLASS = {
+        spend: 'mode-spend', orders: 'mode-orders', items: 'mode-items',
+        per_order: 'mode-perorder', per_item: 'mode-peritem',
+    };
+    // Heading and formatting for the lifetime-comparison column, which mirrors
+    // whichever metric the active mode ranks by.
+    const MODE_METRIC = {
+        spend:     { label: 'All-Time Spend',   field: 'spent',       currency: true  },
+        orders:    { label: 'All-Time Orders',  field: 'order_count', currency: false },
+        items:     { label: 'All-Time Items',   field: 'items',       currency: false },
+        per_order: { label: 'All-Time $/Order', field: 'per_order',   currency: true  },
+        per_item:  { label: 'All-Time $/Item',  field: 'per_item',    currency: true  },
+    };
     const PERIOD_LABEL = {
         all: 'All time', '30d': 'Last 30 days', '90d': 'Last 90 days',
         ytd: 'Year to date', ttm: 'Trailing 12 months',
@@ -997,16 +1024,28 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     function noteFor(data) {
-        if (data.mode === 'items') {
-            return 'Ranked by total number of items purchased across all orders.';
-        }
-        if (data.mode === 'per_item') {
+        let note;
+        if (data.mode === 'orders') {
+            note = 'Ranked by total number of orders placed.';
+        } else if (data.mode === 'items') {
+            note = 'Ranked by total number of items purchased.';
+        } else if (data.mode === 'per_order' || data.mode === 'per_item') {
+            const perOrder = data.mode === 'per_order';
+            const unit = perOrder ? 'orders' : 'items';
             const pct = data.total_customers ? Math.round(100 * data.pool_size / data.total_customers) : 0;
-            return 'Ranked by average spend per item (total spent ÷ items), among the ' +
-                fmtInt(data.pool_size) + ' customers with at least ' + fmtInt(data.item_floor) +
-                ' items purchased — the top ' + pct + '% by volume.';
+            note = 'Ranked by ' +
+                (perOrder ? 'average order value (total spent ÷ orders)'
+                          : 'average spend per item (total spent ÷ items)') +
+                ', among the ' + fmtInt(data.pool_size) + ' customers with at least ' +
+                fmtInt(data.ratio_floor) + ' ' + unit + ' — the top ' + pct + '% by volume.';
+        } else {
+            note = 'Ranked by total amount spent.';
         }
-        return 'Ranked by total amount spent across all orders.';
+        if (data.period !== 'all') {
+            note += ' Figures cover ' + (PERIOD_LABEL[data.period] || '').toLowerCase() +
+                '; the All Time column shows each customer’s lifetime figure for comparison.';
+        }
+        return note;
     }
 
     function load() {
@@ -1036,15 +1075,23 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     function render(data) {
-        const list = data.customers || [];
+        const list    = data.customers || [];
+        const metric  = MODE_METRIC[data.mode] || MODE_METRIC.spend;
+        const showAll = data.period !== 'all';
+
         tableEl.className = 'tc-table ' + (MODE_CLASS[data.mode] || 'mode-spend');
+        allTimeTh.hidden = !showAll;
+        allTimeTh.textContent = metric.label;
+
         countEl.textContent = 'Top ' + list.length + ' customer' + (list.length === 1 ? '' : 's') +
             ' · ' + (PERIOD_LABEL[data.period] || 'All time');
         noteEl.textContent = noteFor(data);
 
         rowsEl.innerHTML = '';
         if (list.length === 0) {
-            rowsEl.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:1.5rem;">No customers found.</td></tr>';
+            const cols = tableEl.querySelectorAll('thead th:not([hidden])').length;
+            rowsEl.innerHTML = '<tr><td colspan="' + cols + '" style="text-align:center;color:#aaa;padding:1.5rem;">' +
+                'No customers with orders in this timeframe.</td></tr>';
         } else {
             let html = '';
             list.forEach(function (c) {
@@ -1056,7 +1103,12 @@ require __DIR__ . '/../app/partials/header.php';
                     '<td class="tc-col-num col-orders">' + fmtInt(c.order_count) + '</td>' +
                     '<td class="tc-col-num col-items">' + fmtInt(c.items) + '</td>' +
                     '<td class="tc-col-num col-spent">' + fmtCurrency(c.spent) + '</td>' +
+                    '<td class="tc-col-num col-perorder">' + fmtCurrency(c.per_order) + '</td>' +
                     '<td class="tc-col-num col-peritem">' + fmtCurrency(c.per_item) + '</td>' +
+                    (showAll
+                        ? '<td class="tc-col-num col-alltime">' +
+                              (metric.currency ? fmtCurrency(c.all_time) : fmtInt(c.all_time)) + '</td>'
+                        : '') +
                     '</tr>';
             });
             rowsEl.innerHTML = html;
