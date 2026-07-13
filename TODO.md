@@ -29,6 +29,11 @@ authoritative log of shipped releases.
 Items move here after they ship; keep only the most recent 10.
 `app/changelog.php` is the authoritative log of everything older.
 
+- **1.14.0–1.16.0** — Top Customers report: five ranking modes (spend,
+  orders, items, spend per order, spend per item), timeframe filter with a
+  lifetime-comparison column, mailing addresses pulled from the latest
+  order, CSV export.  Mailing-label printing is still parked pending the
+  merge-vs-label decision.
 - **1.7.0** — Masquerade-as-another-user feature for root: per-row button
   on Users page, header suffix `(orig-username)`, "Log out as" link.
 - **1.6.0** — Hourly rates with effective date ranges, plus a Mark-paid
