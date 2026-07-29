@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.17.0',
+        'date'    => '2026-07-28',
+        'title'   => 'Print several copies of a bundle at once',
+        'notes'   => [
+            'The bundle print modal has a new Copies box in the bottom left.  Set it to 3 and you get three full sets of labels -- three bundle name labels and three of each component -- in a single run, instead of reopening the modal for each one.',
+            'The Qty column and the total label count update as you type, so you can see exactly how many labels are coming before you print.',
+            'If some labels fail and you land on the retry screen, Copies is still editable.  A row is marked failed even when only one of its copies did not print, so turning Copies down to 1 before hitting Retry avoids reprinting the ones that came out fine.',
+        ],
+    ],
+    [
         'version' => '1.16.0',
         'date'    => '2026-07-13',
         'title'   => 'Top Customers: rank by orders, and compare any window against all time',
