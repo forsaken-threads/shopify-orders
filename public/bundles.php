@@ -294,6 +294,30 @@ require __DIR__ . '/../app/partials/header.php';
         font-size: .85rem;
     }
 
+    /* ── Copies control in the print modal footer ── */
+    .bp-copies-label {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        font-size: .85rem;
+        color: var(--text, #374151);
+    }
+    .bp-copies-label input {
+        width: 4rem;
+        padding: .35rem .5rem;
+        border: 1px solid var(--border, #d1d5db);
+        border-radius: 4px;
+        font-size: .85rem;
+        font-family: inherit;
+        color: var(--text, #111827);
+    }
+    .bp-copies-label input:focus {
+        outline: none;
+        border-color: var(--accent, #4f46e5);
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, .15);
+    }
+    .bp-copies-label input:disabled { opacity: .5; }
+
     .be-section { padding: 1rem 1.25rem; border-top: 1px solid #f0f0f0; }
     .be-section:first-of-type { border-top: none; }
 
@@ -894,6 +918,14 @@ require __DIR__ . '/../app/partials/header.php';
                 if (cancel) cancel.addEventListener('click', closeBundlePrintModal);
                 const form = document.getElementById('bp-form');
                 if (form) form.addEventListener('submit', handleBundlePrintSubmit);
+                const copies = document.getElementById('bp-copies');
+                if (copies) {
+                    copies.addEventListener('input', bpApplyCopies);
+                    copies.addEventListener('change', () => {
+                        copies.value = bpCopiesValue();
+                        bpApplyCopies();
+                    });
+                }
             })
             .catch(err => {
                 bpLoading.hidden = true;
@@ -956,7 +988,7 @@ require __DIR__ . '/../app/partials/header.php';
                     '<input type="hidden" name="items[0][preferred_brand]" value="' + esc(bundlePreferredBrand) + '">' +
                 '</td>' +
                 '<td class="bp-ml-empty">—</td>' +
-                '<td class="qty">1' +
+                '<td class="qty"><span class="bp-qty-val">1</span>' +
                     '<input type="hidden" name="items[0][quantity]" value="1">' +
                 '</td>' +
                 '<td class="skip-persist-col">' +
@@ -1006,7 +1038,7 @@ require __DIR__ . '/../app/partials/header.php';
                 '<td>' +
                     '<select name="items[' + i + '][ml]" required>' + mlOptions + '</select>' +
                 '</td>' +
-                '<td class="qty">1' +
+                '<td class="qty"><span class="bp-qty-val">1</span>' +
                     '<input type="hidden" name="items[' + i + '][quantity]" value="1">' +
                 '</td>' +
                 '<td class="skip-persist-col">' +
@@ -1029,12 +1061,39 @@ require __DIR__ . '/../app/partials/header.php';
                 '<th class="skip-persist-col">Save</th>' +
             '</tr></thead><tbody>' + bundleNameRow + componentRows + '</tbody></table>' +
             '<div class="print-modal-footer">' +
-                '<span class="print-total-qty">Total labels: <strong>' + totalLabels + '</strong></span>' +
+                '<label class="bp-copies-label" for="bp-copies">Copies' +
+                    '<input type="number" id="bp-copies" min="1" max="20" step="1" value="1">' +
+                '</label>' +
+                '<span class="print-total-qty">Total labels: <strong id="bp-total-labels">' + totalLabels + '</strong></span>' +
                 '<span class="print-error" id="bp-error"></span>' +
                 '<button type="button" class="btn-print-cancel" id="bp-cancel-btn">Cancel</button>' +
                 '<button type="submit" class="btn-print-submit" id="bp-submit-btn">Print Labels</button>' +
             '</div>' +
             '</form>';
+    }
+
+    // Copies applies to every row — one full set of bundle labels per copy.
+    // The field is left editable in the retry stage so a partial failure can be
+    // reprinted at a lower count than the original run.
+    function bpCopiesValue() {
+        const el = document.getElementById('bp-copies');
+        let n = el ? parseInt(el.value, 10) : 1;
+        if (!Number.isFinite(n) || n < 1) n = 1;
+        if (n > 20) n = 20;
+        return n;
+    }
+
+    function bpApplyCopies() {
+        const form = document.getElementById('bp-form');
+        if (!form) return;
+        const n    = bpCopiesValue();
+        const rows = form.querySelectorAll('tr[data-item-index]');
+        rows.forEach(row => {
+            row.querySelector('input[name$="[quantity]"]').value = n;
+            row.querySelector('.bp-qty-val').textContent = n;
+        });
+        const total = document.getElementById('bp-total-labels');
+        if (total) total.textContent = rows.length * n;
     }
 
     function bpUpdateButton() {
