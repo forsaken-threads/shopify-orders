@@ -415,4 +415,38 @@ try {
     // Column already exists — nothing to do.
 }
 
+// ── VIP scores ───────────────────────────────────────────────────────────────
+//
+// One row per VIP per run of scripts/score-vips.php, keyed by lowercased email
+// like every other customer-level read in this codebase (there is no customer
+// table).  computed_on is a 'YYYY-MM-DD' date in the display timezone, matching
+// the run's local day rather than the UTC instant it happened to start.
+//
+// The four star flags are stored separately rather than only their total: the
+// tiebreak that produced a customer's rank compares the star vector position by
+// position, and that is not reconstructible from a count.  The eight figures
+// behind them are stored for the same reason — orders get archived and
+// backfilled, so re-deriving why somebody was a VIP in March from today's
+// orders table will not always reproduce March's answer.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS vip_scores (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        computed_on   TEXT    NOT NULL,
+        email_key     TEXT    NOT NULL,
+        vip_rank      INTEGER NOT NULL,
+        score         INTEGER NOT NULL,
+        star_6m_spend INTEGER NOT NULL DEFAULT 0,
+        star_6m_items INTEGER NOT NULL DEFAULT 0,
+        star_at_spend INTEGER NOT NULL DEFAULT 0,
+        star_at_items INTEGER NOT NULL DEFAULT 0,
+        spend_6m      REAL    NOT NULL DEFAULT 0.0,
+        items_6m      INTEGER NOT NULL DEFAULT 0,
+        spend_at      REAL    NOT NULL DEFAULT 0.0,
+        items_at      INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (computed_on, email_key)
+    );
+SQL);
+
 echo "Migration complete.\n";

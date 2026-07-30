@@ -11,5 +11,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # Daily paid orders sync — 2:00 AM
 0 2 * * *   redrover  docker exec php84-web-1 php utility/scripts/sync-paid-orders.php >> /home/redrover/environments/php84/src/utility/logs/sync-paid-orders.log 2>&1
 
+# Daily VIP scoring — 3:00 AM, after the paid-orders sync so it sees the night's orders
+0 3 * * *   redrover  docker exec php84-web-1 php utility/scripts/score-vips.php >> /home/redrover/environments/php84/src/utility/logs/score-vips.log 2>&1
+
 # Monthly full product sync with reconciliation — 1st of the month, 4:00 AM
 0 4 1 * *   redrover  docker exec php84-web-1 php utility/scripts/sync-products.php --all-products >> /home/redrover/environments/php84/src/utility/logs/sync-products-full.log 2>&1

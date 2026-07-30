@@ -25,7 +25,7 @@ fi
 chown "$LOG_USER:$LOG_USER" "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 
-for log in sync-products.log sync-paid-orders.log sync-products-full.log; do
+for log in sync-products.log sync-paid-orders.log sync-products-full.log score-vips.log; do
     touch "$LOG_DIR/$log"
     chown "$LOG_USER:$LOG_USER" "$LOG_DIR/$log"
     chmod 640 "$LOG_DIR/$log"
