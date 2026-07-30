@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.18.0',
+        'date'    => '2026-07-30',
+        'title'   => 'VIPs: a nightly top-fifty ranking, a report, and a badge on your orders',
+        'notes'   => [
+            'The app now works out a VIP list every night at 3:00 AM, just after the paid-orders sync so it counts the night\'s orders rather than yesterday\'s.  A customer earns a star for each of four measures they place in the top fifty of -- money spent and items bought, each counted over the trailing six months and over all time -- and the fifty highest star totals become that night\'s VIPs.',
+            'Reports has a new VIPs card showing the current list: rank, customer, how many stars they hold and which ones, and the spend and item figures behind them for both windows.  It has its own Download CSV button, and like the other reports it is admin and root only.',
+            'Orders now carry a VIP badge -- a dark VIP pill followed by four stars, filled in for the ones that customer holds.  It shows on the order list, on the single order page, and in the header search results, so you can see who you are dealing with without opening a report.  Hover a star to see which measure it stands for.',
+            'Two things worth knowing about the list.  Every night is kept rather than overwritten, so a day is only ever scored once -- re-running it reports and stops instead of replacing that day\'s rows.  And customers who tie on all four measures are separated at random, so the last few places can differ from one night to the next even when nothing underneath has changed.  That is expected rather than a fault.',
+            'Nobody is a VIP until the nightly job has run for the first time.  Until then no badge appears anywhere and the report says plainly that there is no list yet.',
+            'Deploy step: production needs `php scripts/migrate.php` for the new vip_scores table and `sudo scripts/publish-artifacts.sh` to install the 3:00 AM cron entry.',
+        ],
+    ],
+    [
         'version' => '1.17.0',
         'date'    => '2026-07-28',
         'title'   => 'Print several copies of a bundle at once',
