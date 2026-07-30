@@ -151,6 +151,11 @@ changelog in the next.  Never combine them.  Commit messages:
 - **Don't mutate persistent state for testing.**  No overwriting password
   hashes, flipping rows, or truncating tables to make a curl test work.
   If a test forces it, restore the prior state.
+- **The local `orders.sqlite` is a manual copy of production** and drifts
+  from the day it was taken.  So before verifying anything windowed — a
+  trailing period, a date range — confirm the window actually contains
+  rows.  An empty window and a correct answer look identical in the
+  output, and a check that cannot fail reads exactly like one that passed.
 - **Default to editing existing files.**  Don't create README / notes /
   scratch files unless asked.  CLAUDE.md is the only meta-doc that
   belongs in the repo root.
