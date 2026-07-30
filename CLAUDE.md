@@ -16,11 +16,11 @@ framework), composer for the one vendored dep (`phpmailer`).
 
 ## Always check at session start
 
-- **`TODO.md`** — project board (Must Have / Nice To Have / Now Have).
-  Consult before suggesting new work.  Move items between columns as the
-  user gives direction or as things ship.  Cap "Now Have" at the 10 most
-  recent entries — older shipped work lives in `app/changelog.php`, which
-  is definitive.
+- **The board** — `torpedo ~/Boards/ForsakenThreads/cent-notes` tracks
+  everything outstanding for this repo.  It lives outside the repo, so it
+  never shows up in `git status`; consult it before suggesting new work.
+  It carries only what has not shipped — `app/changelog.php` stays
+  authoritative for what has.
 - **`app/changelog.php`** — authoritative release history.  Every user-visible
   change is paired with an entry here at the time of version bump.
 - **Auto-memory** (`~/.claude/projects/-home-keith-Projects-ForsakenThreads-shopify-orders/memory/`)
@@ -152,8 +152,8 @@ changelog in the next.  Never combine them.  Commit messages:
   hashes, flipping rows, or truncating tables to make a curl test work.
   If a test forces it, restore the prior state.
 - **Default to editing existing files.**  Don't create README / notes /
-  scratch files unless asked.  CLAUDE.md and TODO.md are the only
-  meta-docs that belong in the repo root.
+  scratch files unless asked.  CLAUDE.md is the only meta-doc that
+  belongs in the repo root.
 - **No emojis.**  Not in code, commits, or UI.
 - **Comments**: state the non-obvious *why*, not the *what*.  Multi-line
   comment blocks and rotting "added for issue #X" notes don't belong.
