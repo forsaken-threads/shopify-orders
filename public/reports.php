@@ -496,6 +496,38 @@ require __DIR__ . '/../app/partials/header.php';
     .tc-table th.col-alltime { background: #3d3d6b; }
     .tc-table td.col-alltime { color: #666; border-left: 1px solid #e2e8f0; }
 
+    /* ── VIPs ── */
+    .vip-col-score { text-align: center; width: 3.5rem; }
+    .vip-score     { font-weight: 700; color: #1a1a2e; }
+    .vip-col-stars { width: 6.5rem; }
+
+    .vip-stars { display: inline-flex; gap: .2rem; }
+
+    .vip-star svg {
+        display: block;
+        width: .95rem;
+        height: .95rem;
+        stroke-width: 1.75;
+        stroke-linejoin: round;
+    }
+
+    .vip-star.on  svg { fill: #f0a500; stroke: #f0a500; }
+    .vip-star.off svg { fill: none;    stroke: #d0d5dd; }
+
+    .vip-empty {
+        display: none;
+        margin-top: 1rem;
+        padding: 1.25rem;
+        background: #f8f9fb;
+        border: 1px dashed #d0d5dd;
+        border-radius: 8px;
+        font-size: .85rem;
+        color: #555;
+        line-height: 1.5;
+    }
+
+    .vip-empty.visible { display: block; }
+
 </style>
 
 <div class="reports-wrap">
@@ -718,6 +750,84 @@ require __DIR__ . '/../app/partials/header.php';
                                 </tr>
                             </thead>
                             <tbody id="tc-rows"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 3: VIPs ── -->
+        <div class="accordion-card" id="card-vips">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-vips"
+                 onclick="toggleAccordion('card-vips')">
+                <div class="accordion-header-icon">
+                    <!-- star icon -->
+                    <svg viewBox="0 0 24 24">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>VIPs</h2>
+                    <p>The fifty top customers from the nightly ranking — spend and items, over six months and over all time.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-vips">
+
+                <div class="tc-controls">
+                    <span class="tc-control-label" id="vip-asof"></span>
+                    <button type="button" class="tc-load-btn" id="vip-load-btn">Reload</button>
+                    <a class="btn-download" id="vip-csv-btn" href="#">Download CSV</a>
+                </div>
+
+                <p class="tc-mode-note">
+                    A star is awarded for placing in the top fifty of each measure: spend and
+                    items over the trailing six months, and spend and items over all time.
+                    Customers tied on every measure are separated at random, so the last places
+                    on the list can differ between runs even when nothing underneath has changed.
+                </p>
+
+                <!-- Loading -->
+                <div class="lookup-loading" id="vip-loading">
+                    <div class="spinner"></div>
+                    Loading the VIP list…
+                </div>
+
+                <!-- Error -->
+                <div class="lookup-error" id="vip-error"></div>
+
+                <!-- No list yet -->
+                <div class="vip-empty" id="vip-empty">
+                    No VIP list yet — the nightly ranking has not run on this deployment.
+                    It scores every customer once a night and records the fifty highest;
+                    the list appears here after the first run.
+                </div>
+
+                <!-- Results -->
+                <div class="results-area" id="vip-results">
+                    <div class="tc-results-header">
+                        <span class="tc-results-count" id="vip-count"></span>
+                    </div>
+                    <div class="tc-table-wrap">
+                        <table class="tc-table" id="vip-table">
+                            <thead>
+                                <tr>
+                                    <th class="tc-col-rank">#</th>
+                                    <th>Customer</th>
+                                    <th class="vip-col-score">Score</th>
+                                    <th class="vip-col-stars">Stars</th>
+                                    <th class="tc-col-num">6mo Spent</th>
+                                    <th class="tc-col-num">6mo Items</th>
+                                    <th class="tc-col-num">All-Time Spent</th>
+                                    <th class="tc-col-num">All-Time Items</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vip-rows"></tbody>
                         </table>
                     </div>
                 </div>
@@ -1151,6 +1261,131 @@ require __DIR__ . '/../app/partials/header.php';
         limitInput.value = n;
         window.location.href = apiUrl('top-customers.php?format=csv&mode=' + encodeURIComponent(activeMode) +
             '&period=' + encodeURIComponent(periodEl.value) + '&limit=' + n);
+    });
+}());
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    // escHtml, apiUrl and toggleAccordion are provided by app/partials/header.php.
+
+    // ── VIPs ────────────────────────────────────────────────────────────────────
+
+    const cardEl    = document.getElementById('card-vips');
+    const asOfEl    = document.getElementById('vip-asof');
+    const loadBtn   = document.getElementById('vip-load-btn');
+    const csvBtn    = document.getElementById('vip-csv-btn');
+    const loadingEl = document.getElementById('vip-loading');
+    const errorEl   = document.getElementById('vip-error');
+    const emptyEl   = document.getElementById('vip-empty');
+    const resultsEl = document.getElementById('vip-results');
+    const countEl   = document.getElementById('vip-count');
+    const rowsEl    = document.getElementById('vip-rows');
+
+    // The four measures in the order the ranking compares them, with the label
+    // each star carries as a tooltip.
+    const STARS = [
+        ['star_6m_spend', 'Top 50 by spend, last six months'],
+        ['star_6m_items', 'Top 50 by items, last six months'],
+        ['star_at_spend', 'Top 50 by spend, all time'],
+        ['star_at_items', 'Top 50 by items, all time'],
+    ];
+
+    const STAR_SVG = '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 ' +
+        '17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+
+    let loaded = false;
+
+    function fmtCurrency(n) {
+        return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtInt(n) { return Number(n).toLocaleString(); }
+
+    function starsHtml(v) {
+        let html = '<span class="vip-stars">';
+        STARS.forEach(function (star) {
+            const held = v[star[0]] === 1;
+            html += '<span class="vip-star ' + (held ? 'on' : 'off') + '" title="' +
+                escHtml(star[1] + (held ? '' : ' — not held')) + '">' + STAR_SVG + '</span>';
+        });
+        return html + '</span>';
+    }
+
+    function load() {
+        loadBtn.disabled = true;
+        errorEl.classList.remove('visible');
+        emptyEl.classList.remove('visible');
+        resultsEl.classList.remove('visible');
+        loadingEl.classList.add('visible');
+
+        fetch(apiUrl('vips.php'))
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
+                return r.json();
+            })
+            .then(function (data) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                render(data);
+            })
+            .catch(function (msg) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                errorEl.textContent = typeof msg === 'string' ? msg : 'Failed to load the VIP list.';
+                errorEl.classList.add('visible');
+            });
+    }
+
+    function render(data) {
+        const list = data.vips || [];
+
+        // No run yet is a normal state on a fresh deploy, not an empty table.
+        if (list.length === 0) {
+            asOfEl.textContent = '';
+            csvBtn.hidden = true;
+            emptyEl.classList.add('visible');
+            return;
+        }
+
+        csvBtn.hidden = false;
+        asOfEl.textContent = 'As of ' + data.computed_on;
+        countEl.textContent = list.length + ' VIP' + (list.length === 1 ? '' : 's');
+
+        let html = '';
+        list.forEach(function (v) {
+            html += '<tr>' +
+                '<td class="tc-col-rank">' + v.rank + '</td>' +
+                '<td><div class="tc-cust-name">' + escHtml(v.name || '—') + '</div>' +
+                    '<div class="tc-cust-email">' + escHtml(v.email) + '</div></td>' +
+                '<td class="vip-col-score"><span class="vip-score">' + v.score + '</span></td>' +
+                '<td class="vip-col-stars">' + starsHtml(v) + '</td>' +
+                '<td class="tc-col-num">' + fmtCurrency(v.spend_6m) + '</td>' +
+                '<td class="tc-col-num">' + fmtInt(v.items_6m) + '</td>' +
+                '<td class="tc-col-num">' + fmtCurrency(v.spend_at) + '</td>' +
+                '<td class="tc-col-num">' + fmtInt(v.items_at) + '</td>' +
+                '</tr>';
+        });
+        rowsEl.innerHTML = html;
+        resultsEl.classList.add('visible');
+    }
+
+    // Nothing to configure, so the list loads itself the first time the card is
+    // opened rather than making the operator press a button to see it.
+    cardEl.querySelector('.accordion-header').addEventListener('click', function () {
+        if (!loaded && cardEl.classList.contains('open')) {
+            loaded = true;
+            load();
+        }
+    });
+
+    loadBtn.addEventListener('click', load);
+
+    csvBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        window.location.href = apiUrl('vips.php?format=csv');
     });
 }());
 </script>
