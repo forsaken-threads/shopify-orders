@@ -4,6 +4,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/permissions.php';
+require_once __DIR__ . '/../app/vip.php';
 
 requirePermission($config, 'orders');
 
@@ -50,6 +51,9 @@ $liStmt = $db->prepare(
 );
 $liStmt->execute([$id]);
 $lineItems = $liStmt->fetchAll();
+
+// VIPs are keyed by lowercased email; customer_email is stored as received.
+$vip = currentVipScores($db)[strtolower((string) $order['customer_email'])] ?? null;
 
 function statusBadgeOrder(string $status): string
 {
@@ -221,7 +225,7 @@ require __DIR__ . '/../app/partials/header.php';
     <div class="order-meta-card">
         <dl class="order-meta-grid">
             <div><dt>Shopify Order ID</dt><dd><?= h($order['shopify_order_id']) ?></dd></div>
-            <div><dt>Customer</dt><dd><?= h($order['customer_name']) ?><?php if ($order['customer_email']): ?> <span style="color:#888;font-size:.82rem;">&lt;<?= h($order['customer_email']) ?>&gt;</span><?php endif; ?></dd></div>
+            <div><dt>Customer</dt><dd><?= h($order['customer_name']) ?><?php if ($order['customer_email']): ?> <span style="color:#888;font-size:.82rem;">&lt;<?= h($order['customer_email']) ?>&gt;</span><?php endif; ?><?= vipBadgeHtml($vip) ?></dd></div>
             <div><dt>Total</dt><dd><?= h($order['currency']) ?> <?= h(number_format((float) $order['total_price'], 2)) ?></dd></div>
             <div><dt>Status</dt><dd><?= statusBadgeOrder($order['status']) ?></dd></div>
             <div>

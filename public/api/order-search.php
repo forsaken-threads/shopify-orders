@@ -9,12 +9,17 @@ declare(strict_types=1);
  * Searches orders by order_number, customer_name, and customer_email.
  * Returns up to 20 matching orders.
  *
+ * Each result carries a 'vip' object when that customer is on the current VIP
+ * list, or null when they are not — which is also what every result reads
+ * before the nightly ranking has run.
+ *
  * Requires HTTP Basic Auth.
  */
 
 $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/db.php';
 require_once __DIR__ . '/../../app/permissions.php';
+require_once __DIR__ . '/../../app/vip.php';
 
 requireApiPermission($config, 'orders');
 
@@ -45,13 +50,28 @@ SQL);
 $stmt->execute([':q1' => $like, ':q2' => $like, ':q3' => $like]);
 $results = $stmt->fetchAll();
 
-echo json_encode(array_map(fn($r) => [
-    'id'             => (int) $r['id'],
-    'order_number'   => $r['order_number'],
-    'customer_name'  => $r['customer_name'],
-    'customer_email' => $r['customer_email'],
-    'total_price'    => (float) $r['total_price'],
-    'currency'       => $r['currency'],
-    'status'         => $r['status'],
-    'shopify_created_at' => $r['shopify_created_at'],
-], $results), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+// VIPs are keyed by lowercased email; customer_email is stored as received.
+$vips = currentVipScores($db);
+
+echo json_encode(array_map(function (array $r) use ($vips): array {
+    $vip = $vips[strtolower((string) $r['customer_email'])] ?? null;
+
+    return [
+        'id'             => (int) $r['id'],
+        'order_number'   => $r['order_number'],
+        'customer_name'  => $r['customer_name'],
+        'customer_email' => $r['customer_email'],
+        'total_price'    => (float) $r['total_price'],
+        'currency'       => $r['currency'],
+        'status'         => $r['status'],
+        'shopify_created_at' => $r['shopify_created_at'],
+        'vip'            => $vip === null ? null : [
+            'rank'          => (int) $vip['vip_rank'],
+            'score'         => (int) $vip['score'],
+            'star_6m_spend' => (int) $vip['star_6m_spend'],
+            'star_6m_items' => (int) $vip['star_6m_items'],
+            'star_at_spend' => (int) $vip['star_at_spend'],
+            'star_at_items' => (int) $vip['star_at_items'],
+        ],
+    ];
+}, $results), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/permissions.php';
+require_once __DIR__ . '/../app/vip.php';
 
 requirePermission($config, 'orders');
 
@@ -61,6 +62,10 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([':status' => $filterStatus, ':limit' => $perPage, ':offset' => $offset]);
 $orders = $stmt->fetchAll();
+
+// One lookup for the whole page.  VIPs are keyed by lowercased email;
+// customer_email is stored as received.
+$vips = currentVipScores($db);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -150,6 +155,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <td><span class="order-num"><?= h($order['order_number']) ?></span></td>
                     <td>
                         <?= h($order['customer_name']) ?>
+                        <?= vipBadgeHtml($vips[strtolower((string) $order['customer_email'])] ?? null) ?>
                         <div class="customer-email"><?= h($order['customer_email']) ?></div>
                     </td>
                     <td class="price hide-mobile">

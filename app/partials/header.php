@@ -288,7 +288,14 @@ function h(mixed $v): string
         }
 
         .search-result-name {
+            display: flex;
+            align-items: center;
             font-size: .85rem;
+        }
+
+        /* Only the name truncates — a badge beside it would otherwise be the
+           first thing the ellipsis ate. */
+        .search-result-name-text {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -612,6 +619,41 @@ function h(mixed $v): string
         .status-printed   { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
         .status-fulfilled { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
         .status-archived  { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+
+        /* ── VIP badge ── */
+        /* Dark pill with the star gold, so it reads as its own thing next to a
+           status badge rather than as another status. */
+        .vip-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .25rem;
+            flex: none;
+            vertical-align: middle;
+            margin-left: .35rem;
+        }
+
+        .vip-badge-label {
+            padding: .15em .45em;
+            border-radius: 4px;
+            background: #1a1a2e;
+            color: #f0a500;
+            font-size: .66rem;
+            font-weight: 700;
+            letter-spacing: .04em;
+        }
+
+        .vip-badge-stars { display: inline-flex; gap: .1rem; }
+
+        .vip-badge-star svg {
+            display: block;
+            width: .72rem;
+            height: .72rem;
+            stroke-width: 1.75;
+            stroke-linejoin: round;
+        }
+
+        .vip-badge-star.on  svg { fill: #f0a500; stroke: #f0a500; }
+        .vip-badge-star.off svg { fill: none;    stroke: #d0d5dd; }
 
         /* ── Buttons ── */
         .btn-download {
@@ -1176,6 +1218,34 @@ function toggleAccordion(cardId) {
         return '<span class="status-badge ' + cls + '">' + escHtml(label) + '</span>';
     }
 
+    // The client-side twin of vipBadgeHtml() in app/vip.php, for the one surface
+    // that renders customers from JSON.  Star order matches VIP_STAR_COLUMNS.
+    var VIP_STAR_SVG = '<svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 ' +
+        '17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+
+    var VIP_STARS = [
+        ['star_6m_spend', 'Top 50 by spend, last six months'],
+        ['star_6m_items', 'Top 50 by items, last six months'],
+        ['star_at_spend', 'Top 50 by spend, all time'],
+        ['star_at_items', 'Top 50 by items, all time'],
+    ];
+
+    function vipBadgeHtml(vip) {
+        if (!vip) return '';
+
+        var stars = '';
+        VIP_STARS.forEach(function (star) {
+            var held = vip[star[0]] === 1;
+            stars += '<span class="vip-badge-star ' + (held ? 'on' : 'off') + '" title="' +
+                escHtml(star[1] + (held ? '' : ' — not held')) + '">' + VIP_STAR_SVG + '</span>';
+        });
+
+        return '<span class="vip-badge" title="' +
+            escHtml('VIP #' + vip.rank + ' — ' + vip.score + ' of ' + VIP_STARS.length + ' stars') + '">' +
+            '<span class="vip-badge-label">VIP</span>' +
+            '<span class="vip-badge-stars">' + stars + '</span></span>';
+    }
+
     input.addEventListener('input', function () {
         var q = input.value.trim();
         clearTimeout(debounceId);
@@ -1207,7 +1277,10 @@ function toggleAccordion(cardId) {
                         html += '<a class="search-result-item" href="' + escHtml(href) + '">' +
                             '<span class="search-result-order">' + escHtml(order.order_number) + '</span>' +
                             '<span class="search-result-customer">' +
-                                '<div class="search-result-name">' + escHtml(order.customer_name) + '</div>' +
+                                '<div class="search-result-name">' +
+                                    '<span class="search-result-name-text">' + escHtml(order.customer_name) + '</span>' +
+                                    vipBadgeHtml(order.vip) +
+                                '</div>' +
                                 '<div class="search-result-email">' + escHtml(order.customer_email) + '</div>' +
                             '</span>' +
                             '<span class="search-result-meta">' +
