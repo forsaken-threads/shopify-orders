@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.19.0',
+        'date'    => '2026-07-30',
+        'title'   => 'See which discount code an order was placed with',
+        'notes'   => [
+            'The Orders list has a new Code column showing the discount code an order was placed with -- VIP10, NEWCUSTOMER5, whatever it happened to be.  Orders placed without a code leave the column empty, and the handful that used two codes show both.',
+            'This is what makes a promotion measurable in the flow of work: VIP10 redemptions show up as the orders come through, rather than needing a report to be run.',
+            'Only codes somebody actually typed in are shown.  Automatic discounts -- the kind Shopify applies on its own without a code being entered -- have no code to show, so those orders look the same here as undiscounted ones.  That is about half of all discounted orders, so read the column as "which code", not as "was this discounted".',
+            'Existing orders get their codes filled in by the deploy step below, so the history is there straight away.  VIP10 itself has not been used yet, so what shows at first is older promotions -- that is expected rather than a fault.',
+            'Deploy step: production needs `php scripts/migrate.php` for the new discount_codes column, and then `php scripts/backfill-discount-codes.php --apply` to fill it in for orders that already exist.',
+        ],
+    ],
+    [
         'version' => '1.18.0',
         'date'    => '2026-07-30',
         'title'   => 'VIPs: a nightly top-fifty ranking, a report, and a badge on your orders',
