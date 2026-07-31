@@ -17,6 +17,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/db.php';
 require __DIR__ . '/../../app/webhook.php';
+require __DIR__ . '/../../app/discounts.php';
 
 // ── Validate HTTP method ──────────────────────────────────────────────────────
 
@@ -150,6 +151,7 @@ $customerEmail = $order['customer']['email'] ?? $order['email'] ?? '';
 $totalPrice    = (float) ($order['total_price'] ?? 0.0);
 $currency      = $order['currency']    ?? 'USD';
 $createdAt     = $order['created_at']  ?? date('c');
+$discountCodes = discountCodesFor($order);
 
 try {
     $db->beginTransaction();
@@ -161,17 +163,20 @@ try {
     $db->prepare(<<<'SQL'
         INSERT INTO orders
             (shopify_order_id, order_number, customer_name, customer_email,
-             total_price, currency, status, raw_data, shopify_created_at)
+             total_price, currency, status, raw_data, shopify_created_at,
+             discount_codes)
         VALUES
             (:shopify_id, :order_number, :customer_name, :customer_email,
-             :total_price, :currency, :status, :raw_data, :created_at)
+             :total_price, :currency, :status, :raw_data, :created_at,
+             :discount_codes)
         ON CONFLICT(shopify_order_id) DO UPDATE SET
             order_number   = excluded.order_number,
             customer_name  = excluded.customer_name,
             customer_email = excluded.customer_email,
             total_price    = excluded.total_price,
             currency       = excluded.currency,
-            raw_data       = excluded.raw_data
+            raw_data       = excluded.raw_data,
+            discount_codes = excluded.discount_codes
     SQL)->execute([
         ':shopify_id'     => $shopifyId,
         ':order_number'   => $orderNumber,
@@ -182,6 +187,7 @@ try {
         ':status'         => $initialStatus,
         ':raw_data'       => $rawBody,
         ':created_at'     => $createdAt,
+        ':discount_codes' => $discountCodes,
     ]);
 
     // If the order is now fully refunded, archive it regardless of any existing

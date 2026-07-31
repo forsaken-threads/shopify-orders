@@ -37,6 +37,7 @@ $projectRoot = dirname(__DIR__);
 $config = require $projectRoot . '/app/config.php';
 require_once $projectRoot . '/app/db.php';
 require $projectRoot . '/app/shopify.php';
+require $projectRoot . '/app/discounts.php';
 
 // ── Parse arguments ───────────────────────────────────────────────────────────
 
@@ -70,10 +71,12 @@ $existingIdSet = array_flip($existingIds); // Use as a hash-set for O(1) lookups
 $orderStmt = $db->prepare(<<<'SQL'
     INSERT INTO orders
         (shopify_order_id, order_number, customer_name, customer_email,
-         total_price, currency, status, raw_data, shopify_created_at)
+         total_price, currency, status, raw_data, shopify_created_at,
+         discount_codes)
     VALUES
         (:shopify_id, :order_number, :customer_name, :customer_email,
-         :total_price, :currency, :status, :raw_data, :created_at)
+         :total_price, :currency, :status, :raw_data, :created_at,
+         :discount_codes)
 SQL);
 
 $lineStmt = $db->prepare(<<<'SQL'
@@ -240,6 +243,7 @@ while ($nextUrl !== null) {
                 ':status'         => $status,
                 ':raw_data'       => $rawData,
                 ':created_at'     => $createdAt,
+                ':discount_codes' => discountCodesFor($order),
             ]);
 
             $orderId = (int) $db->lastInsertId();

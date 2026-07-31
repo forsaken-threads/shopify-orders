@@ -449,4 +449,18 @@ $pdo->exec(<<<'SQL'
     );
 SQL);
 
+// ── Add discount_codes to orders ──────────────────────────────────────────────
+//
+// Discount codes arrive inside raw_data, where no query can filter on them.
+// Stored uppercased, comma-joined and comma-wrapped (',VIP10,NEWCUSTOMER5,') so
+// LIKE '%,VIP10,%' matches a whole code — a bare '%VIP10%' would also match a
+// future VIP100.  Empty string means the order carried no code.
+
+try {
+    $pdo->exec("ALTER TABLE orders ADD COLUMN discount_codes TEXT NOT NULL DEFAULT ''");
+    echo "Added discount_codes column to orders table.\n";
+} catch (\PDOException $e) {
+    // Column already exists — nothing to do.
+}
+
 echo "Migration complete.\n";
