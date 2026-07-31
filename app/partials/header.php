@@ -606,6 +606,23 @@ function h(mixed $v): string
 
         .qty { font-variant-numeric: tabular-nums; text-align: center; }
 
+        /* Neutral on purpose: a discount code is a label, not a state, and sits
+           in the same row as a status badge and a VIP pill. Colouring it would
+           make it read as a third status. */
+        .discount-code {
+            display: inline-block;
+            padding: .2em .5em;
+            border-radius: 4px;
+            background: #f3f4f6;
+            color: #4b5563;
+            border: 1px solid #e5e7eb;
+            font-size: .72rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .discount-code + .discount-code { margin-left: .25rem; }
+
         /* ── Status badges ── */
         .status-badge {
             display: inline-block;

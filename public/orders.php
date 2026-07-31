@@ -50,7 +50,8 @@ $sortDir = in_array($filterStatus, ['fulfilled', 'archived'], true) ? 'DESC' : '
 
 $stmt = $db->prepare("
     SELECT o.id, o.shopify_order_id, o.order_number, o.customer_name, o.customer_email,
-           o.total_price, o.currency, o.status, o.shopify_created_at, o.received_at,
+           o.total_price, o.currency, o.status, o.discount_codes, o.shopify_created_at,
+           o.received_at,
            COALESCE(
                (SELECT SUM(li.quantity) FROM order_line_items li WHERE li.order_id = o.id),
                0
@@ -86,10 +87,27 @@ function statusBadge(string $status): string
     return '<span class="status-badge ' . $class . '">' . ucfirst(htmlspecialchars($status, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')) . '</span>';
 }
 
+function discountCodesHtml(string $stored): string
+{
+    // Stored delimiter-wrapped (',VIP10,NEWCUSTOMER5,') so a LIKE can match a
+    // whole code; the wrapping commas are storage and never displayed.
+    $trimmed = trim($stored, ',');
+    if ($trimmed === '') {
+        return '';
+    }
+
+    $html = '';
+    foreach (explode(',', $trimmed) as $code) {
+        $html .= '<span class="discount-code">' . h($code) . '</span>';
+    }
+
+    return $html;
+}
+
 // Number of visible columns (used for accordion colspan).
-// Base: expand, order, customer, total, items, status, order-date = 7
+// Base: expand, order, customer, total, items, status, code, order-date = 8
 // +2 if pending (print + printed/archive group), +1 if archived (unarchive), +1 if printed (pending btn)
-$colCount = $filterStatus === 'pending' ? 9 : ($filterStatus === 'archived' || $filterStatus === 'printed' || $filterStatus === 'fulfilled' ? 8 : 7);
+$colCount = $filterStatus === 'pending' ? 10 : ($filterStatus === 'archived' || $filterStatus === 'printed' || $filterStatus === 'fulfilled' ? 9 : 8);
 
 $pageTitle  = 'Orders - Cent Notes';
 $activePage = 'orders';
@@ -133,6 +151,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <th class="hide-mobile">Total</th>
                     <th class="hide-mobile">Items</th>
                     <th class="hide-mobile">Status</th>
+                    <th class="hide-mobile">Code</th>
                     <th>Order Date</th>
                     <?php if ($filterStatus === 'pending'): ?><th></th><th></th><?php endif; ?>
                     <?php if ($filterStatus === 'fulfilled'): ?><th></th><?php endif; ?>
@@ -163,6 +182,7 @@ require __DIR__ . '/../app/partials/header.php';
                     </td>
                     <td class="qty hide-mobile"><?= (int) $order['total_quantity'] ?></td>
                     <td class="hide-mobile"><?= statusBadge($order['status']) ?></td>
+                    <td class="hide-mobile"><?= discountCodesHtml((string) $order['discount_codes']) ?></td>
                     <td><?= h((function($d) use ($config) {
                         try {
                             return (new DateTimeImmutable($d))
