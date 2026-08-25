@@ -6,7 +6,7 @@ declare(strict_types=1);
  *
  * Set these variables before require-ing this file:
  *   string      $pageTitle  — rendered in <title>
- *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | 'clock' | 'timecards' | null (highlights the active nav link)
+ *   string|null $activePage — 'orders' | 'reports' | 'charts' | 'bundles' | 'products' | 'clock' | 'timecards' | null (highlights the active nav link)
  */
 
 $activePage ??= null;
@@ -998,6 +998,7 @@ function toggleAccordion(cardId) {
         if (userCan($navUser, 'reports'))          { $navItems[] = ['key' => 'reports',   'label' => 'Reports',    'href' => 'reports.php']; }
         if (userCan($navUser, 'charts'))           { $navItems[] = ['key' => 'charts',    'label' => 'Charts',     'href' => 'charts.php']; }
         if (userCan($navUser, 'bundles'))          { $navItems[] = ['key' => 'bundles',   'label' => 'Bundles',    'href' => 'bundles.php']; }
+        if (userCan($navUser, 'orders'))           { $navItems[] = ['key' => 'products',  'label' => 'Products',   'href' => 'products.php']; }
         if (userCan($navUser, 'clock_in_out'))     { $navItems[] = ['key' => 'clock',     'label' => 'Clock',      'href' => 'clock.php']; }
         if (userCan($navUser, 'manage_timecards')) { $navItems[] = ['key' => 'timecards', 'label' => 'Time cards', 'href' => 'timecards.php']; }
     ?>

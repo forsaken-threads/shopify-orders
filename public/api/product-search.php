@@ -5,6 +5,7 @@ declare(strict_types=1);
  * Product live-search endpoint.
  *
  * GET /api/product-search.php?q=<search_term>[&mode=attach&bundle_id=<int>]
+ * GET /api/product-search.php?q=<search_term>&mode=print
  *
  * Returns a JSON array of up to 20 matching products.  Matches are
  * case-insensitive and accent-insensitive via the pre-computed normalized_title
@@ -15,9 +16,13 @@ declare(strict_types=1);
  *   attach     Attach-candidate search for a bundle edit modal.
  *              Requires bundle_id.  Excludes bundles (is_bundle = 1),
  *              the bundle itself, and products already attached to it.
+ *   print      Print-a-label search for the Products page.  Excludes bundles,
+ *              which have no ml size, and carries the label fields so the
+ *              print card can be filled without a second round trip.
  *
  * Response shape:
  *   [{ "id": <int>, "shopify_product_id": "...", "title": "...", "vendor": "..." }, ...]
+ *   mode=print adds "custom_brand", "preferred_title" and "preferred_brand".
  *
  * Requires HTTP Basic Auth.
  */
@@ -64,6 +69,20 @@ switch ($mode) {
              LIMIT  20"
         );
         $stmt->execute([':bundle_id' => $bundleId, ':needle' => $needle]);
+        break;
+
+    case 'print':
+        $stmt = $db->prepare(
+            "SELECT id, shopify_product_id, title, vendor,
+                    custom_brand, preferred_title, preferred_brand
+             FROM   products
+             WHERE  deleted_at       IS NULL
+               AND  is_bundle        = 0
+               AND  normalized_title LIKE :needle
+             ORDER  BY title
+             LIMIT  20"
+        );
+        $stmt->execute([':needle' => $needle]);
         break;
 
     default:

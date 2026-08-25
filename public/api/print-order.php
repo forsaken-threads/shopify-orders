@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- * Print labels for an order, a single one-off label, or a bundle.
+ * Print labels for an order, a single one-off label, a bundle, or a product.
  *
  * POST /api/print-order.php
  * Body (multipart/form-data):
- *   action              — "print" (default), "confirm", "oneoff", or "bundle"
+ *   action              — "print" (default), "confirm", "oneoff", "bundle", or "product"
  *
  * action=print:
  *   order_id            — internal order PK
@@ -31,6 +31,14 @@ declare(strict_types=1);
  * No order-summary label is appended, no status is transitioned, per-row
  * save_edits still persists preferred_title/preferred_brand on the component.
  * Log lines use bundle:<shopify_product_id> instead of order:<shopify_order_id>.
+ *
+ * action=product:
+ *   product_id          — internal products.id of a non-bundle product
+ *   items[0][*]         — same shape as action=print
+ * On-demand reprint of a single label for a product nobody ordered — no order
+ * is involved, so no status is transitioned.  Persistence follows the one-off
+ * rule (the global skip_persist flag) rather than a per-row checkbox.
+ * Log lines use product:<shopify_product_id>.
  *
  * Header: X-CSRF-Token: <token>
  */
@@ -67,11 +75,12 @@ $action = trim((string) ($_POST['action'] ?? 'print'));
 $force       = (bool) ($_POST['force'] ?? false);
 $skipPersist = (bool) ($_POST['skip_persist'] ?? false);  // global flag for one-off prints
 
-// ── Resolve the subject (order or bundle) and the log identifier ─────────────
+// ── Resolve the subject (order, bundle or product) and the log identifier ────
 //
 // $logIdentifier is the token written into the print/error log lines so each
 // label can be traced back to the thing it was printed for.  For orders this
-// is the Shopify order id; for bundles it's the Shopify product id.
+// is the Shopify order id; for bundles and products it's the Shopify product
+// id, prefixed so the two cannot be confused in the log.
 
 if ($action === 'bundle') {
     $bundleId = (int) ($_POST['bundle_id'] ?? 0);
@@ -92,6 +101,25 @@ if ($action === 'bundle') {
         exit;
     }
     $logIdentifier = 'bundle:' . $bundle['shopify_product_id'];
+} elseif ($action === 'product') {
+    $printProductId = (int) ($_POST['product_id'] ?? 0);
+    if ($printProductId <= 0) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Invalid product ID.']);
+        exit;
+    }
+    $productStmt = $db->prepare(
+        "SELECT id, shopify_product_id FROM products
+         WHERE id = ? AND is_bundle = 0 AND deleted_at IS NULL"
+    );
+    $productStmt->execute([$printProductId]);
+    $product = $productStmt->fetch();
+    if (!$product) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Product not found.']);
+        exit;
+    }
+    $logIdentifier = 'product:' . $product['shopify_product_id'];
 } else {
     $orderId = (int) ($_POST['order_id'] ?? 0);
     if ($orderId <= 0) {
@@ -251,8 +279,10 @@ foreach ($items as $idx => $item) {
     // Update preferred title/brand in products table if the submitted values
     // differ from the current preferences.
     // For full-order prints, each item has its own save_edits flag (checked = persist).
-    // For one-off prints, the global skip_persist flag is used.
-    $itemSaveEdits = $action === 'oneoff' ? !$skipPersist : !empty($item['save_edits']);
+    // For one-off and product prints, the global skip_persist flag is used.
+    $itemSaveEdits = ($action === 'oneoff' || $action === 'product')
+        ? !$skipPersist
+        : !empty($item['save_edits']);
     if ($itemSaveEdits && !$isOrderLabel && $productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
         $prefUpdateStmt->execute([$title, $brand, $productId]);
     }
