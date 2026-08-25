@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.20.0',
+        'date'    => '2026-08-25',
+        'title'   => 'Print a label for any product, without an order',
+        'notes'   => [
+            'There is a new Products page in the top menu.  Type a couple of letters of a perfume\'s name, pick it from the list that appears, choose 1ml, 5ml or 10ml, and print.  It is for the times a label is damaged or lost and you just need another one -- you no longer have to find the order it came from.',
+            'The label starts out with the title and brand this product is normally printed with, and both are editable before you print.  As with the one-off Print button on an order, an edit is remembered as this product\'s new preferred wording unless you tick "Don\'t save edits".',
+            'Size starts at 1ml, which is what the great majority of labels are, and each press of Print sends one label.  Press it twice for two.',
+            'Bundles are deliberately left out of the search: a bundle has no ml size of its own, and its labels are still printed from the Bundles page.',
+            'Anyone who can print labels from an order can use this -- the same people, no new permission to hand out.',
+        ],
+    ],
+    [
         'version' => '1.19.0',
         'date'    => '2026-07-30',
         'title'   => 'See which discount code an order was placed with',
