@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.21.0',
+        'date'    => '2026-08-27',
+        'title'   => 'See which VIPs have already used the VIP10 postcard code',
+        'notes'   => [
+            'On the Orders list, a customer carrying a VIP badge now also shows a small crossed-out "VIP10 used" tag once they have placed an order with the VIP10 code.  It is there so the postcard does not go out a second time to somebody who has already redeemed it.',
+            'The tag describes the customer, not the order in front of you.  It shows on every order that customer has -- including ones placed long before the code, and ones with nothing in the Code column -- because the question it answers is whether this person has already had it, not whether this particular order used it.',
+            'Hover the tag for the reminder not to send the code again.  If they have used it on more than one order, it says how many.',
+            'Only VIPs get the tag, since they are the only people the postcard goes to.  Somebody who drops off the nightly VIP list stops showing it, even though their old redemption is still on record.',
+            'VIP 10 typed with a space at checkout counts as the same code, so a customer is not missed over a stray space.',
+            'The tag is on the Orders list only.  The single order page and the header search results still show the VIP badge on its own.',
+        ],
+    ],
+    [
         'version' => '1.20.0',
         'date'    => '2026-08-25',
         'title'   => 'Print a label for any product, without an order',
