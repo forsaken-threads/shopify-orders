@@ -186,3 +186,58 @@ function vipBadgeHtml(?array $score): string
         . '<span class="vip-badge-label">VIP</span>'
         . '<span class="vip-badge-stars">' . $stars . '</span></span>';
 }
+
+// The code she hands VIPs on a postcard.  Matched space-insensitively, so the
+// same code reaches here whether it was entered as VIP10 or VIP 10 at checkout.
+const VIP_DISCOUNT_CODE = 'VIP10';
+
+/**
+ * How many orders each customer has placed with VIP_DISCOUNT_CODE, keyed by
+ * lowercased email.  Customers who have never used it are absent, so a caller
+ * can pass a lookup straight through to vipCodeUsedHtml().
+ *
+ * One query for the whole page, like currentVipScores(): only a handful of
+ * customers ever redeem one code, so the whole set comes back at once.
+ */
+function vipCodeRedemptions(PDO $db): array
+{
+    // The commas discountCodesFor() wraps around the stored codes are what keep
+    // this from also matching VIP100.
+    $stmt = $db->prepare(
+        "SELECT   LOWER(customer_email) AS email_key, COUNT(*) AS orders
+         FROM     orders
+         WHERE    customer_email != ''
+           AND    REPLACE(discount_codes, ' ', '') LIKE :pattern
+         GROUP BY email_key"
+    );
+    $stmt->execute([':pattern' => '%,' . VIP_DISCOUNT_CODE . ',%']);
+
+    $out = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $out[(string) $row['email_key']] = (int) $row['orders'];
+    }
+
+    return $out;
+}
+
+/**
+ * The spent-code marker for one customer, or '' for anyone who has not redeemed
+ * it — so a caller can pass a vipCodeRedemptions() lookup straight through.
+ *
+ * As with vipBadgeHtml(), nothing customer-derived reaches the markup: the code
+ * is a constant and the count is cast to int.
+ */
+function vipCodeUsedHtml(?int $orders): string
+{
+    if ($orders === null || $orders < 1) {
+        return '';
+    }
+
+    $title = $orders === 1
+        ? 'Already ordered with ' . VIP_DISCOUNT_CODE . ' — do not send the code again'
+        : 'Already ordered with ' . VIP_DISCOUNT_CODE . ' on ' . (int) $orders
+          . ' orders — do not send the code again';
+
+    return '<span class="vip-code-used" title="' . $title . '">'
+        . '<span class="vip-code-used-code">' . VIP_DISCOUNT_CODE . '</span> used</span>';
+}

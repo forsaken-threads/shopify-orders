@@ -672,6 +672,26 @@ function h(mixed $v): string
         .vip-badge-star.on  svg { fill: #f0a500; stroke: #f0a500; }
         .vip-badge-star.off svg { fill: none;    stroke: #d0d5dd; }
 
+        /* A spent postcard code, drawn in the discount-code chip's neutral
+           palette because that is what it is — the code struck through says it
+           has been redeemed, without competing with the VIP pill beside it. */
+        .vip-code-used {
+            display: inline-block;
+            margin-left: .3rem;
+            padding: .15em .45em;
+            border-radius: 4px;
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+            font-size: .66rem;
+            font-weight: 700;
+            letter-spacing: .04em;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .vip-code-used-code { text-decoration: line-through; }
+
         /* ── Buttons ── */
         .btn-download {
             display: inline-block;

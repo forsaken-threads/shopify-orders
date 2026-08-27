@@ -68,6 +68,9 @@ $orders = $stmt->fetchAll();
 // customer_email is stored as received.
 $vips = currentVipScores($db);
 
+// Same shape, same key: who has already spent the postcard code.
+$vipCodeUse = vipCodeRedemptions($db);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pageUrl(int $page, string $status): string
@@ -161,7 +164,9 @@ require __DIR__ . '/../app/partials/header.php';
             </thead>
             <tbody>
             <?php foreach ($orders as $order):
-                $oid = (int) $order['id'];
+                $oid      = (int) $order['id'];
+                $emailKey = strtolower((string) $order['customer_email']);
+                $vip      = $vips[$emailKey] ?? null;
             ?>
                 <tr class="order-row" data-order-id="<?= $oid ?>">
                     <td class="col-expand">
@@ -174,7 +179,9 @@ require __DIR__ . '/../app/partials/header.php';
                     <td><span class="order-num"><?= h($order['order_number']) ?></span></td>
                     <td>
                         <?= h($order['customer_name']) ?>
-                        <?= vipBadgeHtml($vips[strtolower((string) $order['customer_email'])] ?? null) ?>
+                        <?= vipBadgeHtml($vip) ?>
+                        <?php /* Only VIPs get the postcard, so only a VIP's spent code is worth saying. */ ?>
+                        <?= $vip === null ? '' : vipCodeUsedHtml($vipCodeUse[$emailKey] ?? null) ?>
                         <div class="customer-email"><?= h($order['customer_email']) ?></div>
                     </td>
                     <td class="price hide-mobile">
