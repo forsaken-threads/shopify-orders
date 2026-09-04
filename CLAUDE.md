@@ -23,7 +23,7 @@ framework), composer for the one vendored dep (`phpmailer`).
   authoritative for what has.
 - **`app/changelog.php`** — authoritative release history.  Every user-visible
   change is paired with an entry here at the time of version bump.
-- **Auto-memory** (`~/.claude/projects/-home-keith-Projects-ForsakenThreads-shopify-orders/memory/`)
+- **Auto-memory** (`~/.claude/projects/-home-keith-Projects-ForsakenThreads-cent-notes/memory/`)
   — feedback the user has given me across prior sessions.
 
 ## Database

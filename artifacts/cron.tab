@@ -1,4 +1,4 @@
-# shopify-orders sync jobs
+# Cent Notes sync jobs
 # Install: sudo scripts/publish-artifacts.sh
 # Requires: /home/redrover/environments/php84/src/utility/do
 
