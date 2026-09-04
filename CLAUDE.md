@@ -138,10 +138,15 @@ Every version bump pairs with:
 changelog in the next.  Never combine them.  Commit messages:
 
 - Feature: ``topic: short subject`` (lowercase, imperative).  Body wraps
-  ~72 chars, bullets describe what / why.  End with the
-  `Co-Authored-By: Claude Opus 4.7 (1M context)` trailer.
+  ~72 chars, bullets describe what / why.  End with a
+  `Co-Authored-By:` trailer naming the model that co-authored it.
 - Version-bump: ``bump version to X.Y.Z with <topic> changelog entry``,
   touching only `app/config.php` and `app/changelog.php`.  Same trailer.
+
+**No model version here, deliberately.**  Every session is told its own
+identity by the harness and is the only thing that knows it; a version
+written into this file is accurate the day it lands and wrong from the
+next model on, with nothing to announce the change.  Don't re-pin it.
 
 ## Workflow rules
 
