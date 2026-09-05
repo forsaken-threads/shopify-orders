@@ -68,6 +68,11 @@ if ($sessionToken === '' || !hash_equals($sessionToken, $providedToken)) {
     exit;
 }
 
+// PHP holds an exclusive flock on the session file for the whole request, and
+// the print loop below runs one blocking ssh per label.  Without this, a slow
+// print blocks every other request from the same operator and exhausts the pool.
+session_write_close();
+
 $db = getDb($config);
 
 $action = trim((string) ($_POST['action'] ?? 'print'));
