@@ -217,12 +217,15 @@ foreach ($items as $idx => $item) {
     // Build the SSH print command with timeouts to prevent indefinite hangs.
     // ConnectTimeout: fail fast if the printer host is unreachable.
     // ServerAliveInterval/CountMax: detect a stalled connection within 15s.
+    // -4: the print host answers on IPv4 only — its AAAA record resolves but
+    // drops inbound SSH, so without this a container with a v6 route would
+    // burn ConnectTimeout on v6 before falling back on every single label.
     $mlArg = $isOrderLabel
         ? 'Order'
         : ($isBundleLabel ? 'Bundle' : $ml . 'ml');
     $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
-    $sshOpts = '-o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
+    $sshOpts = '-4 -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
     $cmd = "ssh {$sshOpts} " . escapeshellarg($config['print_ssh_target']) . ' ' . escapeshellarg($remoteCmd);
 
     // Execute for each copy (quantity) — track per-item success.
