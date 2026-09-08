@@ -48,6 +48,33 @@ if (is_file($shopifyIniPath)) {
     }
 }
 
+// Resolve the label printer's ssh target from the WAN route.
+//
+// carmarthen answers which route is up in root-owned /etc/backup-route;
+// scripts/sync-print-route.sh copies that file here as route.ini, because this
+// app runs in a container whose /etc is not the host's.  Only the route name is
+// imported — what the target is on each route is this repo's business, and
+// lives in env.ini as PRINT_SSH_TARGET_DIRECT / PRINT_SSH_TARGET_TUNNEL.
+//
+// An explicit PRINT_SSH_TARGET still wins, so it pins the target and this
+// changes nothing until that key is removed from a deployment's env.ini.
+$routeIniPath = __DIR__ . '/../route.ini';
+$printRoute   = '';
+if (is_file($routeIniPath)) {
+    $routeIni = parse_ini_file($routeIniPath);
+    if (is_array($routeIni)) {
+        $printRoute = strtoupper(trim((string) ($routeIni['route'] ?? '')));
+    }
+}
+
+$printSshTarget = (string) (getenv('PRINT_SSH_TARGET') ?: '');
+if ($printSshTarget === '' && $printRoute !== '') {
+    $printSshTarget = (string) (getenv('PRINT_SSH_TARGET_' . $printRoute) ?: '');
+}
+if ($printSshTarget === '') {
+    $printSshTarget = 'keith@percival.spartang.com';
+}
+
 return [
     'db_path'                => __DIR__ . '/../orders.sqlite',
     // Current application version.  Bumped per commit when there are
@@ -69,9 +96,9 @@ return [
     // Set DISPLAY_TIMEZONE in env.ini to any valid PHP timezone identifier,
     // e.g. America/New_York, Europe/London, Australia/Sydney.
     'display_timezone'       => (string) (getenv('DISPLAY_TIMEZONE')       ?: 'America/Detroit'),
-    // user@host passed to ssh by print-order.php.  Falls back to the prod
-    // target so deployments without the env var set continue to work.
-    'print_ssh_target'       => (string) (getenv('PRINT_SSH_TARGET')       ?: 'keith@percival.spartang.com'),
+    // user@host passed to ssh by print-order.php.  Resolved above from
+    // PRINT_SSH_TARGET, else the route in route.ini, else the prod default.
+    'print_ssh_target'       => $printSshTarget,
     // ── SMTP (used by app/mailer.php for password-reset emails) ─────────────
     'smtp_host'              => (string) (getenv('SMTP_HOST')              ?: ''),
     'smtp_port'              => (int)    (getenv('SMTP_PORT')              ?: 587),

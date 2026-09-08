@@ -4,6 +4,9 @@ env.ini
 # Shopify Admin API access token — written by install.php, never commit
 shopify.ini
 
+# WAN route, copied off the host by scripts/sync-print-route.sh — per-deployment
+route.ini
+
 # SQLite database
 orders.sqlite
 orders.sqlite-wal

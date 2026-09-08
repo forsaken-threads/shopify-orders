@@ -16,3 +16,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Monthly full product sync with reconciliation — 1st of the month, 4:00 AM
 0 4 1 * *   redrover  docker exec php84-web-1 php utility/scripts/sync-products.php --all-products >> /home/redrover/environments/php84/src/utility/logs/sync-products-full.log 2>&1
+
+# Print route sync — every minute, so a WAN failover needs no second step here.
+# Copies the host's /etc/backup-route into the app directory, where the
+# containerised app can read it; silent unless the route actually changed.
+* * * * *   redrover  /home/redrover/environments/php84/src/utility/scripts/sync-print-route.sh >> /home/redrover/environments/php84/src/utility/logs/sync-print-route.log 2>&1
