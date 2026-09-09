@@ -548,6 +548,22 @@ function h(mixed $v): string
 
         .release-entry-notes li { margin: .15rem 0; }
 
+        .release-more {
+            display: block;
+            width: 100%;
+            margin-top: .85rem;
+            padding: .5rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            background: #fff;
+            font-size: .8rem;
+            font-weight: 600;
+            color: #444;
+            cursor: pointer;
+        }
+
+        .release-more:hover { background: #f8f9fb; border-color: #d1d5db; }
+
         .release-empty,
         .release-loading {
             padding: 2rem 1rem;
@@ -1370,7 +1386,10 @@ function toggleAccordion(cardId) {
             <button type="button" class="release-close" id="release-close" aria-label="Close">&times;</button>
         </div>
         <div class="release-body" id="release-body">
-            <div class="release-loading"><div class="spinner"></div></div>
+            <div id="release-entries">
+                <div class="release-loading"><div class="spinner"></div></div>
+            </div>
+            <button type="button" class="release-more" id="release-more" hidden>Show older</button>
         </div>
     </div>
 </div>
@@ -1382,14 +1401,19 @@ function toggleAccordion(cardId) {
     var bell      = document.getElementById('navbar-bell');
     var overlay   = document.getElementById('release-modal');
     var closeBtn  = document.getElementById('release-close');
-    var bodyEl    = document.getElementById('release-body');
+    var entriesEl = document.getElementById('release-entries');
+    var moreEl    = document.getElementById('release-more');
     var countEl   = document.getElementById('release-new-count');
     var APP_VERSION = <?= json_encode($appVersion) ?>;
     // Captured at render, not read back at fetch time: opening the modal calls
     // markSeen() alongside loadChangelog(), so the stored value is already on
     // its way to the current version by the time the changelog answers.
     var LAST_SEEN   = <?= json_encode($lastVersionSeen) ?>;
+    var PAGE_SIZE = 10;
     var loaded    = false;
+    var allEntries     = [];
+    var currentVersion = '';
+    var shown          = 0;
 
     if (!bell || !overlay) return;
 
@@ -1413,48 +1437,71 @@ function toggleAccordion(cardId) {
                 renderChangelog(data);
             })
             .catch(function () {
-                bodyEl.innerHTML = '<div class="release-empty">Failed to load changelog.</div>';
+                entriesEl.innerHTML = '<div class="release-empty">Failed to load changelog.</div>';
             });
     }
 
+    function entryHtml(entry) {
+        var isCurrent = entry.version === currentVersion;
+        var html = '';
+        html += '<div class="release-entry' + (isCurrent ? ' is-current' : '') + '">';
+        html += '<div class="release-entry-head">';
+        html += '<span class="release-entry-version">v' + escHtml(entry.version) + '</span>';
+        if (isCurrent) {
+            html += '<span class="release-entry-current-tag">Current</span>';
+        }
+        if (entry.is_new) {
+            html += '<span class="release-entry-new-tag">New</span>';
+        }
+        html += '<span class="release-entry-date">' + escHtml(entry.date || '') + '</span>';
+        html += '</div>';
+        if (entry.title) {
+            html += '<div class="release-entry-title">' + escHtml(entry.title) + '</div>';
+        }
+        if (Array.isArray(entry.notes) && entry.notes.length) {
+            html += '<ul class="release-entry-notes">';
+            entry.notes.forEach(function (note) {
+                html += '<li>' + escHtml(note) + '</li>';
+            });
+            html += '</ul>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Appends rather than re-rendering, so pressing the button doesn't throw
+    // the reader back to the top of a list they had scrolled down.
+    function appendEntries(count) {
+        var html = '';
+        allEntries.slice(shown, shown + count).forEach(function (entry) {
+            html += entryHtml(entry);
+        });
+        entriesEl.insertAdjacentHTML('beforeend', html);
+        shown = Math.min(shown + count, allEntries.length);
+        moreEl.hidden = shown >= allEntries.length;
+    }
+
     function renderChangelog(data) {
-        var entries = (data && data.entries) || [];
-        if (entries.length === 0) {
-            bodyEl.innerHTML = '<div class="release-empty">No release notes yet.</div>';
+        allEntries = (data && data.entries) || [];
+        if (allEntries.length === 0) {
+            entriesEl.innerHTML = '<div class="release-empty">No release notes yet.</div>';
             return;
         }
-        var current = data.current_version || '';
+        currentVersion = data.current_version || '';
+
         var newCount = 0;
-        var html = '';
-        entries.forEach(function (entry) {
-            var isCurrent = entry.version === current;
+        allEntries.forEach(function (entry) {
             if (entry.is_new) newCount++;
-            html += '<div class="release-entry' + (isCurrent ? ' is-current' : '') + '">';
-            html += '<div class="release-entry-head">';
-            html += '<span class="release-entry-version">v' + escHtml(entry.version) + '</span>';
-            if (isCurrent) {
-                html += '<span class="release-entry-current-tag">Current</span>';
-            }
-            if (entry.is_new) {
-                html += '<span class="release-entry-new-tag">New</span>';
-            }
-            html += '<span class="release-entry-date">' + escHtml(entry.date || '') + '</span>';
-            html += '</div>';
-            if (entry.title) {
-                html += '<div class="release-entry-title">' + escHtml(entry.title) + '</div>';
-            }
-            if (Array.isArray(entry.notes) && entry.notes.length) {
-                html += '<ul class="release-entry-notes">';
-                entry.notes.forEach(function (note) {
-                    html += '<li>' + escHtml(note) + '</li>';
-                });
-                html += '</ul>';
-            }
-            html += '</div>';
         });
-        bodyEl.innerHTML = html;
         countEl.textContent = newCount + ' new';
         countEl.hidden = newCount === 0;
+
+        // An unseen entry left behind the button would be a mark nobody can
+        // see, so a reader who is further behind than one page gets all of
+        // theirs on the first render.
+        entriesEl.innerHTML = '';
+        shown = 0;
+        appendEntries(Math.max(PAGE_SIZE, newCount));
     }
 
     function markSeen() {
@@ -1474,6 +1521,7 @@ function toggleAccordion(cardId) {
         });
     }
 
+    moreEl.addEventListener('click', function () { appendEntries(PAGE_SIZE); });
     bell.addEventListener('click', openModal);
     closeBtn.addEventListener('click', closeModal);
     overlay.addEventListener('click', function (e) {
