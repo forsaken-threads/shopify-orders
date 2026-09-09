@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.22.0',
+        'date'    => '2026-09-08',
+        'title'   => 'See which release notes you have not read yet',
+        'notes'   => [
+            'The bell in the top bar has always told you that something was new.  It now tells you which: every release you have not read is marked with a red New tag, and the number of them sits beside the "What\'s new" title.',
+            'It works off the last time you opened the panel, so opening it clears the tags and the count.  They are there to catch you up once, the same as the dot on the bell.',
+            'On a brand-new account nothing is tagged.  There is no earlier visit to compare against, so a first look gives you the notes without a wall of red.',
+            'The panel now shows ten releases at a time, with a Show older button under the list for the rest.  Pressing it adds to what is already there rather than starting the list again, so you keep your place.',
+            'If you are more than ten releases behind, every one you have not read is shown before the button appears.  Nothing marked New is ever hidden behind a press.',
+        ],
+    ],
+    [
         'version' => '1.21.0',
         'date'    => '2026-08-27',
         'title'   => 'See which VIPs have already used the VIP10 postcard code',
