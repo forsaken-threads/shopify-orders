@@ -458,6 +458,7 @@ function h(mixed $v): string
         .release-header {
             display: flex;
             align-items: center;
+            gap: .6rem;
             justify-content: space-between;
             padding: 1rem 1.25rem;
             border-bottom: 1px solid #e5e7eb;
@@ -467,6 +468,15 @@ function h(mixed $v): string
             font-size: 1rem;
             font-weight: 700;
             color: #1a1a2e;
+        }
+
+        .release-new-count {
+            /* Absorbs the row's free space so it sits beside the title rather
+               than being spread to the middle by justify-content. */
+            margin-right: auto;
+            font-size: .75rem;
+            font-weight: 700;
+            color: #e53e3e;
         }
 
         .release-close {
@@ -510,6 +520,17 @@ function h(mixed $v): string
             letter-spacing: .08em;
             color: #1a1a2e;
             background: #fde68a;
+            padding: .1em .45em;
+            border-radius: 4px;
+        }
+
+        .release-entry-new-tag {
+            font-size: .65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            color: #fff;
+            background: #e53e3e;
             padding: .1em .45em;
             border-radius: 4px;
         }
@@ -1345,6 +1366,7 @@ function toggleAccordion(cardId) {
     <div class="release-box">
         <div class="release-header">
             <h2>What's new</h2>
+            <span class="release-new-count" id="release-new-count" hidden></span>
             <button type="button" class="release-close" id="release-close" aria-label="Close">&times;</button>
         </div>
         <div class="release-body" id="release-body">
@@ -1361,7 +1383,12 @@ function toggleAccordion(cardId) {
     var overlay   = document.getElementById('release-modal');
     var closeBtn  = document.getElementById('release-close');
     var bodyEl    = document.getElementById('release-body');
+    var countEl   = document.getElementById('release-new-count');
     var APP_VERSION = <?= json_encode($appVersion) ?>;
+    // Captured at render, not read back at fetch time: opening the modal calls
+    // markSeen() alongside loadChangelog(), so the stored value is already on
+    // its way to the current version by the time the changelog answers.
+    var LAST_SEEN   = <?= json_encode($lastVersionSeen) ?>;
     var loaded    = false;
 
     if (!bell || !overlay) return;
@@ -1379,7 +1406,7 @@ function toggleAccordion(cardId) {
     }
 
     function loadChangelog() {
-        fetch(apiUrl('changelog.php'), { credentials: 'same-origin' })
+        fetch(apiUrl('changelog.php?since=' + encodeURIComponent(LAST_SEEN)), { credentials: 'same-origin' })
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 loaded = true;
@@ -1397,14 +1424,19 @@ function toggleAccordion(cardId) {
             return;
         }
         var current = data.current_version || '';
+        var newCount = 0;
         var html = '';
         entries.forEach(function (entry) {
             var isCurrent = entry.version === current;
+            if (entry.is_new) newCount++;
             html += '<div class="release-entry' + (isCurrent ? ' is-current' : '') + '">';
             html += '<div class="release-entry-head">';
             html += '<span class="release-entry-version">v' + escHtml(entry.version) + '</span>';
             if (isCurrent) {
                 html += '<span class="release-entry-current-tag">Current</span>';
+            }
+            if (entry.is_new) {
+                html += '<span class="release-entry-new-tag">New</span>';
             }
             html += '<span class="release-entry-date">' + escHtml(entry.date || '') + '</span>';
             html += '</div>';
@@ -1421,6 +1453,8 @@ function toggleAccordion(cardId) {
             html += '</div>';
         });
         bodyEl.innerHTML = html;
+        countEl.textContent = newCount + ' new';
+        countEl.hidden = newCount === 0;
     }
 
     function markSeen() {
