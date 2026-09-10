@@ -192,9 +192,10 @@ $logDir     = dirname(__DIR__, 2) . '/logs';
 $scriptsDir = dirname(__DIR__, 2) . '/scripts';
 $labelLog   = $logDir . '/print-labels.log';
 
+// Each log line below stamps itself as it is built.  One stamp for the whole
+// request made every line of a long print job read as its first second.
 $labelEntries  = '';
 $validMlSizes  = ['1', '5', '10'];
-$timestamp     = date('Y-m-d H:i:s');
 $results       = [];   // per-item status to return to the frontend
 $maxRetries    = 2;     // retry transient SSH failures up to 2 times
 
@@ -264,7 +265,7 @@ exec($sshPrefix . escapeshellarg('true') . ' 2>&1', $probeOutput, $probeResult);
 if ($probeResult !== 0 && printHostUnreachable(implode("\n", $probeOutput))) {
     file_put_contents(
         $logDir . '/print-errors.log',
-        "[{$timestamp}] preflight exit:{$probeResult} | {$logIdentifier} | unreachable, nothing sent\n"
+        '[' . date('Y-m-d H:i:s') . "] preflight exit:{$probeResult} | {$logIdentifier} | unreachable, nothing sent\n"
             . implode("\n", $probeOutput) . "\n---\n",
         FILE_APPEND | LOCK_EX
     );
@@ -341,7 +342,7 @@ foreach ($items as $idx => $item) {
             $outputStr = implode("\n", $cmdOutput);
 
             if ($cmdResult === 0) {
-                $logLine = "[{$timestamp}] exit:0 | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}\n{$outputStr}\n---\n";
+                $logLine = '[' . date('Y-m-d H:i:s') . "] exit:0 | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}\n{$outputStr}\n---\n";
                 file_put_contents($logDir . '/print-results.log', $logLine, FILE_APPEND | LOCK_EX);
                 $printed = true;
                 break;
@@ -353,7 +354,7 @@ foreach ($items as $idx => $item) {
             $retryLabel = $attemptUnreachable
                 ? ' (host unreachable, stopping)'
                 : ($attempt < $maxRetries ? " (attempt " . ($attempt + 1) . "/{$maxRetries}, will retry)" : " (final attempt)");
-            $logLine = "[{$timestamp}] exit:{$cmdResult} | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}{$retryLabel}\ncmd: {$cmd}\n{$outputStr}\n---\n";
+            $logLine = '[' . date('Y-m-d H:i:s') . "] exit:{$cmdResult} | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}{$retryLabel}\ncmd: {$cmd}\n{$outputStr}\n---\n";
             file_put_contents($logDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
 
             // A failure to connect is not transient, and every remaining label
@@ -400,7 +401,7 @@ foreach ($items as $idx => $item) {
 
     // Log the label entry
     $outcome = $itemSkipped ? 'NOT SENT' : ($itemFailed ? 'FAIL' : 'ok');
-    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | {$outcome}\n";
+    $labelEntries .= '[' . date('Y-m-d H:i:s') . "] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | {$outcome}\n";
 
     // Update preferred title/brand in products table if the submitted values
     // differ from the current preferences.
@@ -416,7 +417,7 @@ foreach ($items as $idx => $item) {
             // Print, but do not persist: the label content came from the POST
             // either way, and refusing the whole request would turn this into a
             // printing outage the first time the frontend sends something off.
-            $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | "
+            $labelEntries .= '[' . date('Y-m-d H:i:s') . "] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | "
                            . "preference not saved: product:{$productId} is not part of this subject\n";
         }
     }
