@@ -35,6 +35,7 @@ $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/permissions.php';
 require_once __DIR__ . '/../../app/db.php';
 require_once __DIR__ . '/../../app/customers.php';
+require_once __DIR__ . '/../../app/csv.php';
 
 requireApiPermission($config, 'reports');
 
@@ -247,7 +248,7 @@ if ($format === 'csv') {
     fputcsv($out, $header, ',', '"', '');
     foreach ($rows as $r) {
         $line = [
-            $r['rank'], $r['name'], $r['email'], $r['order_count'], $r['items'],
+            $r['rank'], csvSafe($r['name']), csvSafe($r['email']), $r['order_count'], $r['items'],
             number_format($r['spent'], 2, '.', ''),
             number_format($r['per_item'], 2, '.', ''),
             number_format($r['per_order'], 2, '.', ''),
@@ -257,8 +258,8 @@ if ($format === 'csv') {
                 ? number_format((float) $r['all_time'], 2, '.', '')
                 : (string) $r['all_time'];
         }
-        array_push($line, $r['company'], $r['address1'], $r['address2'],
-                          $r['city'], $r['state'], $r['zip'], $r['country']);
+        array_push($line, csvSafe($r['company']), csvSafe($r['address1']), csvSafe($r['address2']),
+                          csvSafe($r['city']), csvSafe($r['state']), csvSafe($r['zip']), csvSafe($r['country']));
         fputcsv($out, $line, ',', '"', '');
     }
     fclose($out);

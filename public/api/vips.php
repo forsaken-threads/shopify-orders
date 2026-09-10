@@ -41,6 +41,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/permissions.php';
 require_once __DIR__ . '/../../app/db.php';
+require_once __DIR__ . '/../../app/csv.php';
 
 requireApiPermission($config, 'reports');
 
@@ -116,7 +117,7 @@ if ($format === 'csv') {
 
     foreach ($rows as $r) {
         fputcsv($out, [
-            $r['rank'], $r['name'], $r['email'], $r['score'],
+            $r['rank'], csvSafe($r['name']), csvSafe($r['email']), $r['score'],
             $r['star_6m_spend'], $r['star_6m_items'], $r['star_at_spend'], $r['star_at_items'],
             number_format($r['spend_6m'], 2, '.', ''), $r['items_6m'],
             number_format($r['spend_at'], 2, '.', ''), $r['items_at'],
