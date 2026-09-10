@@ -18,6 +18,17 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.23.0',
+        'date'    => '2026-09-10',
+        'title'   => 'Printing tells you when the label printer is offline',
+        'notes'   => [
+            'Printing now checks the label printer before it starts.  If it cannot be reached you are told straight away, instead of watching a spinner while nothing happens.',
+            'If the printer drops out partway through an order, the labels that were not sent are marked NOT SENT rather than being retried one slow label at a time.  A job that used to take several minutes to give up now stops in seconds, and the same labels come out either way.',
+            'Labels marked NOT SENT come back pre-selected in the retry list, so you can print the rest in one click once the printer is back.',
+            'Any changes you made to a label\'s title or brand are still saved, even for the labels that were not sent.',
+        ],
+    ],
+    [
         'version' => '1.22.0',
         'date'    => '2026-09-08',
         'title'   => 'See which release notes you have not read yet',
