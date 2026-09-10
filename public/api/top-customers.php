@@ -183,7 +183,10 @@ $latestStmt = $db->prepare(
     "SELECT customer_name, customer_email, raw_data
      FROM   orders
      WHERE  lower(customer_email) = :email_key
-     ORDER  BY shopify_created_at DESC, id DESC
+     -- strftime() sorts on the UTC instant: the stored offset-bearing strings
+     -- transpose inside the autumn fall-back hour, and this LIMIT 1 would
+     -- then mail to the wrong order's address.
+     ORDER  BY strftime('%Y-%m-%d %H:%M:%S', shopify_created_at) DESC, id DESC
      LIMIT  1"
 );
 

@@ -62,6 +62,15 @@ $pdo->exec(<<<'SQL'
     CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(status);
     CREATE INDEX IF NOT EXISTS idx_orders_created   ON orders(shopify_created_at);
     CREATE INDEX IF NOT EXISTS idx_line_items_order ON order_line_items(order_id);
+
+    -- Serves the "latest order for this customer" lookups in the VIP and Top
+    -- Customers reports, which run once per customer.  Both the lower() and the
+    -- strftime() match those queries exactly; without the index each lookup
+    -- scans and sorts the whole orders table.
+    CREATE INDEX IF NOT EXISTS idx_orders_email_created_utc
+        ON orders(lower(customer_email),
+                  strftime('%Y-%m-%d %H:%M:%S', shopify_created_at) DESC,
+                  id DESC);
 SQL);
 
 // ── Products ──────────────────────────────────────────────────────────────────

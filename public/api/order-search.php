@@ -43,7 +43,9 @@ $stmt = $db->prepare(<<<'SQL'
     WHERE  order_number  LIKE :q1
        OR  customer_name LIKE :q2
        OR  customer_email LIKE :q3
-    ORDER BY shopify_created_at DESC
+    -- strftime() sorts on the UTC instant; the stored offset-bearing strings
+    -- transpose inside the autumn fall-back hour.
+    ORDER BY strftime('%Y-%m-%d %H:%M:%S', shopify_created_at) DESC
     LIMIT 20
 SQL);
 

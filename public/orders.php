@@ -58,7 +58,9 @@ $stmt = $db->prepare("
            ) AS total_quantity
     FROM   orders o
     WHERE  o.status = :status
-    ORDER  BY o.shopify_created_at {$sortDir}
+    -- strftime() sorts on the UTC instant; the stored offset-bearing strings
+    -- transpose inside the autumn fall-back hour.
+    ORDER  BY strftime('%Y-%m-%d %H:%M:%S', o.shopify_created_at) {$sortDir}
     LIMIT  :limit OFFSET :offset
 ");
 $stmt->execute([':status' => $filterStatus, ':limit' => $perPage, ':offset' => $offset]);
