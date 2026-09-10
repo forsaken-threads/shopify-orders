@@ -32,7 +32,7 @@ ARG SOURCE_GID
 # For local development, run nginx and php-fpm as the developer's UID/GID so
 # files created inside the container are owned by the host user. Skipped when
 # either variable is unset.
-RUN if [ -n "${SOURCE_UID:+1}" ] & [ -n "${SOURCE_GID:+1}" ]; then \
+RUN if [ -n "${SOURCE_UID:+1}" ] && [ -n "${SOURCE_GID:+1}" ]; then \
         ((getent group $SOURCE_GID && groupmod -n centnotes "$(getent group $SOURCE_GID | cut -d: -f 1)") || addgroup --gid $SOURCE_GID centnotes) \
         && adduser -D --uid $SOURCE_UID -G centnotes --home /centnotes --shell /bin/bash centnotes \
         && touch /run/nginx.pid \
