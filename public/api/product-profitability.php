@@ -17,8 +17,6 @@ declare(strict_types=1);
  * Run `php scripts/sync-paid-orders.php --all-time` once to populate full
  * order history, then run daily without the flag to stay current.
  *
- * Requires HTTP Basic Auth (same credentials as the web UI).
- *
  * Response shape:
  * {
  *   "product": {

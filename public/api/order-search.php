@@ -12,8 +12,6 @@ declare(strict_types=1);
  * Each result carries a 'vip' object when that customer is on the current VIP
  * list, or null when they are not — which is also what every result reads
  * before the nightly ranking has run.
- *
- * Requires HTTP Basic Auth.
  */
 
 $config = require __DIR__ . '/../../app/config.php';

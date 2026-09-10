@@ -23,8 +23,6 @@ declare(strict_types=1);
  * Response shape:
  *   [{ "id": <int>, "shopify_product_id": "...", "title": "...", "vendor": "..." }, ...]
  *   mode=print adds "custom_brand", "preferred_title" and "preferred_brand".
- *
- * Requires HTTP Basic Auth.
  */
 
 $config = require __DIR__ . '/../../app/config.php';

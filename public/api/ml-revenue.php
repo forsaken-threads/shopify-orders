@@ -18,8 +18,6 @@ declare(strict_types=1);
  *
  * vol_min / vol_max  Optional integer filters on total ml sold per product.
  *
- * Requires HTTP Basic Auth (same credentials as the web UI).
- *
  * Response shape:
  * {
  *   "period": "ytd",

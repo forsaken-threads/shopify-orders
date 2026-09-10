@@ -27,8 +27,6 @@ declare(strict_types=1);
  *
  * bundle.preferred_title / preferred_brand carry the two lines the user saved
  * for the bundle-name print label (printed at Bundle size by print-label.py).
- *
- * Requires HTTP Basic Auth.
  */
 
 $config = require __DIR__ . '/../../app/config.php';

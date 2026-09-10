@@ -10,8 +10,6 @@ declare(strict_types=1);
  * order.  Used by the orders table to populate accordion rows and the raw-data
  * modal on demand rather than embedding all data at page-load time.
  *
- * Requires HTTP Basic Auth (same credentials as the web UI).
- *
  * Response shape:
  * {
  *   "order": {

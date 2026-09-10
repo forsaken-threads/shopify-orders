@@ -11,7 +11,6 @@ declare(strict_types=1);
  * Transitions an order from 'pending' to 'archived'.
  * Returns JSON {ok:true} on success or {ok:false,error:"..."} on failure.
  *
- * Authentication: HTTP Basic Auth (same credentials as the web UI).
  * CSRF protection: token generated in auth.php and stored in the PHP session;
  *                  must be sent back by the client as the X-CSRF-Token header.
  */

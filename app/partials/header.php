@@ -984,8 +984,8 @@ var CSRF_TOKEN = <?= json_encode($_SESSION['csrf_token'] ?? '') ?>;
  * userinfo (user:password@) present there.  fetch() rejects URLs with
  * embedded credentials with a synchronous TypeError, which doesn't even
  * show up as a network request.  Building against location.origin strips
- * the userinfo while keeping same-origin (and the browser still attaches
- * cached Basic Auth from the credential store).
+ * the userinfo while keeping same-origin, so the session cookie is still
+ * sent.
  */
 function apiUrl(path) {
     return window.location.origin + '/api/' + path;

@@ -17,7 +17,6 @@ declare(strict_types=1);
  *   3. The authorization code is exchanged for a permanent access token.
  *        → Token is written to shopify.ini in the project root.
  *
- * Protected by the same HTTP Basic Auth as the orders/download pages.
  * Requires SHOPIFY_API_KEY, SHOPIFY_API_SECRET, and SHOPIFY_SHOP_DOMAIN
  * to be set in env.ini (or as real environment variables).
  */
