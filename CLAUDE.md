@@ -173,6 +173,65 @@ next model on, with nothing to announce the change.  Don't re-pin it.
 - **Syntax check** PHP edits with `php -l <file>` before reporting done.
   No formal test suite — manual browser testing is the bar.
 
+## Deployment
+
+This app runs in two different containers, and only one of them is built
+from this repo.
+
+- **Local development** — `.deployment/Dockerfile`, built through
+  `.local-development/docker-compose.yml` by `./do build` / `up` / `down`.
+  The container is `${NICKNAME}-web-1`; `NICKNAME` still defaults to
+  `shopify-orders`.  Everything under `.deployment/` describes this image
+  and nothing else — its Dockerfile says so in its own first line.
+- **Production** — `php84-web-1` on the carmarthen VPS: a shared php84 stack
+  serving other applications too.  **It is not built from `.deployment/`.**
+  Its image comes from the stack's own
+  `/home/redrover/environments/php84/.deployment/Dockerfile`, and `do-prod`
+  only `docker exec`s into the running container by name.  Nothing in this
+  repo builds or configures it; the stack is a host object and Keith's.
+
+Its three binds, from that stack's
+`.local-development/web/docker-compose.yml` and confirmed with
+`docker inspect -f '{{json .Mounts}}' php84-web-1`:
+
+```
+/home/redrover/environments/php84/src      → /var/www
+/home/redrover/environments/php84/servers  → /etc/nginx/servers
+/home/redrover/.ssh                        → /citadel/.ssh
+```
+
+So the code is bind-mounted rather than baked in — a change to it needs no
+rebuild — and this checkout sits one level down, at
+`/home/redrover/environments/php84/src/utility` on the host and
+`/var/www/utility` inside.  That is the workdir `do-prod` hard-codes, the
+root `artifacts/nginx.conf` serves, and the path `artifacts/cron.tab` and
+`artifacts/logrotate.conf` spell out in full.
+
+Production config that *is* in this repo, installed by
+`sudo scripts/publish-artifacts.sh` on carmarthen:
+
+- `artifacts/nginx.conf` → the php84 stack's
+  `servers/utility.decantalize.com.conf`, picked up by that image's
+  `include /etc/nginx/servers/*.conf`.  This is the vhost that actually
+  serves the site.  `.deployment/config/nginx.conf` is a different thing —
+  the dev image's whole `http {}` block, rooted at `/var/www/public` where
+  production's docroot is `/var/www/utility/public`.
+- `artifacts/cron.tab` → `/etc/cron.d/utility-app`, running the sync scripts
+  as `redrover` through `docker exec`.
+- `artifacts/logrotate.conf` → `/etc/logrotate.d/utility-app`.
+
+**Production's php-fpm pool is the stock one, and nothing in this repo can
+change it.**  The php84 image installs a php.ini and an nginx.conf and no
+pool config at all, so `pm.max_children` is whatever `php:8.4-fpm-alpine`
+ships — read as 5 from that container's `/usr/local/etc/php-fpm.d/www.conf`
+on 2026-09-10.  This repo's `.deployment/config/fpm.conf` sets 15 and
+installs as `php-fpm.d/zzzz.conf`, a file `php84-web-1` does not have, which
+is also the shortest proof that the two images are not the same one.
+Raising the pool is a change to the php84 stack, not to this repo.
+
+Reconciling the two images, or giving production a versioned pool config,
+is a host-write on a stack other applications share — Keith's call.
+
 ## Layout quick map
 
 ```
@@ -199,6 +258,12 @@ scripts/
   add-user.php        interactive user-creation CLI
   sync-products.php   refresh local product cache from Shopify
   sync-paid-orders.php  backfill paid orders missed by webhook
-do, do-prod           bash wrappers for the docker-compose stacks
+  publish-artifacts.sh  install cron / logrotate / vhost on carmarthen
+.deployment/          local-development image only — not production
+.local-development/   docker-compose.yml + .env.defaults for ./do
+artifacts/            production config; see Deployment above
+do                    local-dev compose wrapper (build/up/down)
+do-prod               docker exec into php84-web-1, which this repo does
+                      not build; see Deployment above
 env.ini               local config (gitignored; see env.ini.example)
 ```
