@@ -1141,7 +1141,9 @@ require __DIR__ . '/../app/partials/header.php';
             const cb = row.querySelector('.print-retry-cb');
             if (r.status === 'error') {
                 row.classList.add('print-row-error');
-                statusCell.innerHTML = '<span class="label-fail">FAILED</span>';
+                statusCell.innerHTML = r.skipped
+                    ? '<span class="label-skip">NOT SENT</span>'
+                    : '<span class="label-fail">FAILED</span>';
                 cb.checked = true;
             } else {
                 row.classList.add('print-row-ok');
@@ -1252,8 +1254,12 @@ require __DIR__ . '/../app/partials/header.php';
                 }
                 const mapped = (data.results || []).map(r => {
                     const origIdx = formData.get('_row_map[' + r.index + ']');
-                    return { index: origIdx != null ? Number(origIdx) : r.index, title: r.title, status: r.status, error: r.error };
+                    return { index: origIdx != null ? Number(origIdx) : r.index, title: r.title, status: r.status, error: r.error, skipped: r.skipped };
                 });
+
+                // The job may have been cut short with ok:true — some labels
+                // really printed, so the per-item results still matter.
+                const stoppedEarly = data.error || '';
 
                 if (inReview) {
                     rows.forEach(row => {
@@ -1265,7 +1271,9 @@ require __DIR__ . '/../app/partials/header.php';
                         row.classList.remove('print-row-error', 'print-row-ok');
                         if (retried.status === 'error') {
                             row.classList.add('print-row-error');
-                            statusCell.innerHTML = '<span class="label-fail">FAILED</span>';
+                            statusCell.innerHTML = retried.skipped
+                                ? '<span class="label-skip">NOT SENT</span>'
+                                : '<span class="label-fail">FAILED</span>';
                             cb.checked = true;
                         } else {
                             row.classList.add('print-row-ok');
@@ -1280,6 +1288,8 @@ require __DIR__ . '/../app/partials/header.php';
                 } else {
                     bpEnterReviewStage(mapped);
                 }
+
+                if (stoppedEarly) errorEl.textContent = stoppedEarly;
             })
             .catch(err => {
                 clearTimeout(timeoutId);

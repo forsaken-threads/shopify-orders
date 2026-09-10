@@ -266,6 +266,17 @@
     font-weight: 600;
 }
 
+/* A label the job never sent, as opposed to one the printer refused. */
+.label-skip {
+    display: inline-block;
+    padding: .15rem .5rem;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 4px;
+    font-size: .75rem;
+    font-weight: 600;
+}
+
 tr.print-row-error { background: #fef2f2; }
 tr.print-row-ok td input[type="text"] { opacity: .55; }
 
@@ -576,7 +587,9 @@ var PrintModals = (function () {
             var cb = row.querySelector('.print-retry-cb');
             if (r.status === 'error') {
                 row.classList.add('print-row-error');
-                statusCell.innerHTML = '<span class="label-fail">FAILED</span>';
+                statusCell.innerHTML = r.skipped
+                    ? '<span class="label-skip">NOT SENT</span>'
+                    : '<span class="label-fail">FAILED</span>';
                 cb.checked = true;
             } else {
                 row.classList.add('print-row-ok');
@@ -771,8 +784,12 @@ var PrintModals = (function () {
 
             var mapped = (data.results || []).map(function (r) {
                 var origIdx = formData.get('_row_map[' + r.index + ']');
-                return { index: origIdx != null ? Number(origIdx) : r.index, title: r.title, status: r.status, error: r.error };
+                return { index: origIdx != null ? Number(origIdx) : r.index, title: r.title, status: r.status, error: r.error, skipped: r.skipped };
             });
+
+            // The job may have been cut short with ok:true — some labels really
+            // printed, so the per-item results still matter.
+            var stoppedEarly = data.error || '';
 
             if (inReview) {
                 rows.forEach(function (row) {
@@ -784,7 +801,9 @@ var PrintModals = (function () {
                         row.classList.remove('print-row-error', 'print-row-ok');
                         if (retried.status === 'error') {
                             row.classList.add('print-row-error');
-                            statusCell.innerHTML = '<span class="label-fail">FAILED</span>';
+                            statusCell.innerHTML = retried.skipped
+                                ? '<span class="label-skip">NOT SENT</span>'
+                                : '<span class="label-fail">FAILED</span>';
                             cb.checked = true;
                         } else {
                             row.classList.add('print-row-ok');
@@ -797,6 +816,8 @@ var PrintModals = (function () {
             } else {
                 enterReviewStage(mapped);
             }
+
+            if (stoppedEarly) errorEl.textContent = stoppedEarly;
         })
         .catch(function (err) {
             clearTimeout(timeoutId);

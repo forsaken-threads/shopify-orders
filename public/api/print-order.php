@@ -17,7 +17,7 @@ declare(strict_types=1);
  *   items[i][shopify_product_id] — Shopify product ID
  *   items[i][ml]              — variant ML size (1, 5, or 10)
  *   items[i][quantity]        — label quantity
- * Returns: {ok:true, results:[{index, title, status:"ok"|"error", error?}]}
+ * Returns: {ok:true, results:[{index, title, status:"ok"|"error", error?, skipped?}]}
  * Does NOT update order status — the user must confirm after reviewing.
  *
  * action=confirm:
@@ -39,6 +39,13 @@ declare(strict_types=1);
  * is involved, so no status is transitioned.  Persistence follows the one-off
  * rule (the global skip_persist flag) rather than a per-row checkbox.
  * Log lines use product:<shopify_product_id>.
+ *
+ * The print host is probed once before the first label, and a connect-level ssh
+ * failure part-way through ends the job rather than re-paying ConnectTimeout on
+ * every label that is left.  Those labels come back status:"error" with
+ * skipped:true, and the response carries print_host_unreachable plus an error
+ * string.  A failed probe answers 503 with ok:false and no results at all,
+ * because nothing was attempted.
  *
  * For every action, items[i][shopify_product_id] is checked against the subject
  * the request resolved before a preference is persisted — the order's line
@@ -218,6 +225,60 @@ if ($action === 'bundle') {
 }
 $allowedProductIds = array_filter(array_map('strval', $allowed), static fn(string $id): bool => $id !== '');
 
+/**
+ * Whether ssh gave up before it ever reached the print host.
+ *
+ * Keyed on ssh's own wording rather than on the errno text after the colon:
+ * musl writes "Operation timed out" where glibc writes "Connection timed
+ * out", so the container and a dev box word one failure two ways.  The two
+ * prefixes cover connect timeout, refused, no route and DNS.  A connection
+ * that dropped mid-transfer words itself differently and stays retryable,
+ * which is the distinction the retry rule needs.
+ */
+function printHostUnreachable(string $sshOutput): bool
+{
+    return str_contains($sshOutput, 'ssh: connect to host ')
+        || str_contains($sshOutput, 'ssh: Could not resolve hostname ');
+}
+
+// SSH options for every label and for the probe below.
+// ConnectTimeout: fail fast if the printer host is unreachable.
+// ServerAliveInterval/CountMax: detect a stalled connection within 15s.
+// -4: the print host answers on IPv4 only — its AAAA record resolves but
+// drops inbound SSH, so without this a container with a v6 route would
+// burn ConnectTimeout on v6 before falling back on every single label.
+$sshOpts   = '-4 -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
+$sshPrefix = "ssh {$sshOpts} " . escapeshellarg($config['print_ssh_target']) . ' ';
+
+$hostUnreachable  = false;
+$unreachableError = 'Printer host unreachable — this label was not sent.';
+
+// One probe before the first label.  A host that is already down otherwise
+// costs a full ConnectTimeout on the first label before the loop can tell,
+// and the operator waits with nothing printed either way.  It does not
+// replace the check inside the loop: the host can also drop part-way
+// through, which is what happened on 2026-09-04.
+$probeOutput = [];
+$probeResult = 0;
+exec($sshPrefix . escapeshellarg('true') . ' 2>&1', $probeOutput, $probeResult);
+if ($probeResult !== 0 && printHostUnreachable(implode("\n", $probeOutput))) {
+    file_put_contents(
+        $logDir . '/print-errors.log',
+        "[{$timestamp}] preflight exit:{$probeResult} | {$logIdentifier} | unreachable, nothing sent\n"
+            . implode("\n", $probeOutput) . "\n---\n",
+        FILE_APPEND | LOCK_EX
+    );
+
+    // 503 rather than 200: the request was fine and the dependency is not.
+    // Every caller reads the body, so this only changes what the logs say.
+    http_response_code(503);
+    echo json_encode([
+        'ok'    => false,
+        'error' => 'The label printer host is not reachable.  Nothing was sent — check the printer, then try again.',
+    ]);
+    exit;
+}
+
 foreach ($items as $idx => $item) {
     $title          = trim((string) ($item['title'] ?? ''));
     $brand          = trim((string) ($item['custom_brand'] ?? ''));
@@ -243,25 +304,30 @@ foreach ($items as $idx => $item) {
 
     $qty = max(1, (int) ($item['quantity'] ?? 1));
 
-    // Build the SSH print command with timeouts to prevent indefinite hangs.
-    // ConnectTimeout: fail fast if the printer host is unreachable.
-    // ServerAliveInterval/CountMax: detect a stalled connection within 15s.
-    // -4: the print host answers on IPv4 only — its AAAA record resolves but
-    // drops inbound SSH, so without this a container with a v6 route would
-    // burn ConnectTimeout on v6 before falling back on every single label.
     $mlArg = $isOrderLabel
         ? 'Order'
         : ($isBundleLabel ? 'Bundle' : $ml . 'ml');
     $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
-    $sshOpts = '-4 -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
-    $cmd = "ssh {$sshOpts} " . escapeshellarg($config['print_ssh_target']) . ' ' . escapeshellarg($remoteCmd);
+    $cmd = $sshPrefix . escapeshellarg($remoteCmd);
 
     // Execute for each copy (quantity) — track per-item success.
-    // Transient SSH failures (exit codes 255, 1) are retried up to $maxRetries times.
+    // Transient SSH failures (exit codes 255, 1) are retried up to $maxRetries
+    // times.  A 255 that never reached the host is the exception: it ends the
+    // job instead, because no retry of it can succeed.
     $itemFailed = false;
     $itemError  = '';
-    for ($q = 0; $q < $qty; $q++) {
+    // Set when an earlier label established that the host is not answering:
+    // this one is reported un-attempted rather than costing another
+    // ConnectTimeout that cannot succeed.
+    $itemSkipped = $hostUnreachable;
+
+    if ($itemSkipped) {
+        $itemFailed = true;
+        $itemError  = $unreachableError;
+    }
+
+    for ($q = 0; $q < $qty && !$itemSkipped; $q++) {
         $attempt    = 0;
         $printed    = false;
         $outputStr  = '';
@@ -281,10 +347,23 @@ foreach ($items as $idx => $item) {
                 break;
             }
 
-            // Log every failed attempt
-            $retryLabel = $attempt < $maxRetries ? " (attempt " . ($attempt + 1) . "/{$maxRetries}, will retry)" : " (final attempt)";
+            // Log every failed attempt, saying what happens next rather than
+            // what the retry budget alone would suggest.
+            $attemptUnreachable = printHostUnreachable($outputStr);
+            $retryLabel = $attemptUnreachable
+                ? ' (host unreachable, stopping)'
+                : ($attempt < $maxRetries ? " (attempt " . ($attempt + 1) . "/{$maxRetries}, will retry)" : " (final attempt)");
             $logLine = "[{$timestamp}] exit:{$cmdResult} | {$elapsed}s | {$mlArg} | {$title} | {$brand} | {$logIdentifier}{$retryLabel}\ncmd: {$cmd}\n{$outputStr}\n---\n";
             file_put_contents($logDir . '/print-errors.log', $logLine, FILE_APPEND | LOCK_EX);
+
+            // A failure to connect is not transient, and every remaining label
+            // would pay the same ConnectTimeout for the same nothing.  Stop the
+            // job here; the rest come back un-attempted for the operator to
+            // retry once the host is back.
+            if ($attemptUnreachable) {
+                $hostUnreachable = true;
+                break;
+            }
 
             // Only retry on SSH transport errors (255) or general errors (1) that
             // suggest a transient connection issue rather than a print-service bug.
@@ -301,6 +380,9 @@ foreach ($items as $idx => $item) {
         if (!$printed) {
             $itemFailed = true;
             $itemError  = $outputStr;
+            if ($hostUnreachable) {
+                break;
+            }
         }
     }
 
@@ -308,10 +390,17 @@ foreach ($items as $idx => $item) {
     if ($itemFailed) {
         $result['error'] = $itemError;
     }
+    // Additive, alongside status 'error' rather than replacing it: every caller
+    // branches on status, and one that does not know this flag must still treat
+    // an un-attempted label as not printed.
+    if ($itemSkipped) {
+        $result['skipped'] = true;
+    }
     $results[] = $result;
 
     // Log the label entry
-    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | " . ($itemFailed ? 'FAIL' : 'ok') . "\n";
+    $outcome = $itemSkipped ? 'NOT SENT' : ($itemFailed ? 'FAIL' : 'ok');
+    $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | {$outcome}\n";
 
     // Update preferred title/brand in products table if the submitted values
     // differ from the current preferences.
@@ -335,5 +424,13 @@ foreach ($items as $idx => $item) {
 
 file_put_contents($labelLog, $labelEntries, FILE_APPEND | LOCK_EX);
 
-// Return per-item results — never update order status here
-echo json_encode(['ok' => true, 'results' => $results]);
+// Return per-item results — never update order status here.
+// ok stays true when the job was cut short: some labels really printed, and
+// the caller needs the per-item results to know which.
+$response = ['ok' => true, 'results' => $results];
+if ($hostUnreachable) {
+    $response['print_host_unreachable'] = true;
+    $response['error'] = 'The label printer host stopped answering partway through.  '
+                       . 'Nothing was sent after that — retry the labels below once it is back.';
+}
+echo json_encode($response);
