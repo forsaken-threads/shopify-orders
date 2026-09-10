@@ -207,6 +207,13 @@ rebuild — and this checkout sits one level down, at
 root `artifacts/nginx.conf` serves, and the path `artifacts/cron.tab` and
 `artifacts/logrotate.conf` spell out in full.
 
+**The third bind is what makes label printing work.**  `/citadel` is uid
+1000's home in that container and php-fpm's pool runs as uid 1000, so the
+app's `ssh` finds redrover's keys *and its `ssh_config`* there — which is
+why production can set `PRINT_SSH_TARGET_TUNNEL` to an alias rather than a
+literal host.  Removing the mount stops printing on both routes, not only
+the tunnel.
+
 Production config that *is* in this repo, installed by
 `sudo scripts/publish-artifacts.sh` on carmarthen:
 
