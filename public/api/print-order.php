@@ -40,6 +40,12 @@ declare(strict_types=1);
  * rule (the global skip_persist flag) rather than a per-row checkbox.
  * Log lines use product:<shopify_product_id>.
  *
+ * For every action, items[i][shopify_product_id] is checked against the subject
+ * the request resolved before a preference is persisted — the order's line
+ * items, the bundle and its components, or the product itself.  A label still
+ * prints when the check fails; only the write is skipped, and the skip is
+ * recorded in print-labels.log.
+ *
  * Header: X-CSRF-Token: <token>
  */
 
@@ -189,6 +195,29 @@ $prefUpdateStmt = $db->prepare(
     "UPDATE products SET preferred_title = ?, preferred_brand = ? WHERE shopify_product_id = ?"
 );
 
+// The product id on each item comes from the browser, so it is checked against
+// the subject the request actually resolved before any preference is persisted.
+// Without it a caller could rewrite an unrelated product's label wording while
+// print-labels.log records the subject it named.
+if ($action === 'bundle') {
+    $allowedStmt = $db->prepare(
+        "SELECT p.shopify_product_id
+         FROM   bundle_components bc
+         JOIN   products          p ON p.id = bc.component_product_id
+         WHERE  bc.bundle_product_id = ? AND p.deleted_at IS NULL"
+    );
+    $allowedStmt->execute([$bundle['id']]);
+    // Item 0 of a bundle print is the bundle's own label, carrying its own id.
+    $allowed = array_merge([$bundle['shopify_product_id']], $allowedStmt->fetchAll(PDO::FETCH_COLUMN));
+} elseif ($action === 'product') {
+    $allowed = [$product['shopify_product_id']];
+} else {
+    $allowedStmt = $db->prepare("SELECT shopify_product_id FROM order_line_items WHERE order_id = ?");
+    $allowedStmt->execute([$order['id']]);
+    $allowed = $allowedStmt->fetchAll(PDO::FETCH_COLUMN);
+}
+$allowedProductIds = array_filter(array_map('strval', $allowed), static fn(string $id): bool => $id !== '');
+
 foreach ($items as $idx => $item) {
     $title          = trim((string) ($item['title'] ?? ''));
     $brand          = trim((string) ($item['custom_brand'] ?? ''));
@@ -292,7 +321,15 @@ foreach ($items as $idx => $item) {
         ? !$skipPersist
         : !empty($item['save_edits']);
     if ($itemSaveEdits && !$isOrderLabel && $productId !== '' && ($title !== $preferredTitle || $brand !== $preferredBrand)) {
-        $prefUpdateStmt->execute([$title, $brand, $productId]);
+        if (in_array($productId, $allowedProductIds, true)) {
+            $prefUpdateStmt->execute([$title, $brand, $productId]);
+        } else {
+            // Print, but do not persist: the label content came from the POST
+            // either way, and refusing the whole request would turn this into a
+            // printing outage the first time the frontend sends something off.
+            $labelEntries .= "[{$timestamp}] {$mlArg} | {$title} | {$brand} | {$logIdentifier} | "
+                           . "preference not saved: product:{$productId} is not part of this subject\n";
+        }
     }
 }
 
