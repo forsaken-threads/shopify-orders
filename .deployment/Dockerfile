@@ -10,8 +10,12 @@ WORKDIR /var/www
 # Runtime + build dependencies. icu-dev is needed to build the intl extension
 # (used by app/normalize.php for diacritic-insensitive search). sqlite is the
 # CLI client, handy when poking at orders.sqlite from inside the container.
+# shadow provides groupmod, which the UID/GID block below needs whenever the
+# developer's primary GID already names a group in the base image — the macOS
+# default, where staff is 20 and 20 is dialout here. busybox's addgroup cannot
+# rename, and refuses a GID already in use.
 RUN apk update && apk upgrade && apk add \
-    bash curl nginx autoconf tzdata nano openssl icu-dev sqlite-dev openssh-client less gnupg linux-headers gcc g++ make
+    bash curl nginx autoconf tzdata nano openssl shadow icu-dev sqlite-dev openssh-client less gnupg linux-headers gcc g++ make
 
 RUN docker-php-ext-install pdo_sqlite intl opcache \
     && docker-php-ext-enable opcache
