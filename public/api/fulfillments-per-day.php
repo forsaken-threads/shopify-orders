@@ -70,7 +70,8 @@ switch ($period) {
 $db = getDb($config);
 
 // ── Timezone for date grouping ───────────────────────────────────────────────
-// Shopify timestamps are UTC. Convert to Eastern (America/New_York handles
+// Shopify timestamps are not UTC: they carry the shop's offset, which DateTime
+// honours when it parses one.  Convert to Eastern (America/New_York handles
 // EST/EDT automatically) before grouping by date so that orders are counted
 // on the correct local day.
 $tz = new DateTimeZone('America/New_York');

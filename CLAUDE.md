@@ -39,8 +39,17 @@ framework), composer for the one vendored dep (`phpmailer`).
   column" success message inside the try, to mirror the existing pattern.
 - After any schema change, the feature commit message body must include a
   deploy line: ``Deploy step: production needs `php scripts/migrate.php`...``.
-- All timestamps stored as UTC `'YYYY-MM-DD HH:MM:SS'` text.  Convert to the
+- Timestamps are stored as UTC `'YYYY-MM-DD HH:MM:SS'` text.  Convert to the
   display timezone in PHP, never in SQL.
+- **Except the two `shopify_created_at` columns**, on `orders` and
+  `products`.  They keep Shopify's `created_at` as delivered — ISO 8601 with
+  the shop's offset, like `2026-08-27T07:35:26-04:00` — and SQLite compares
+  them as text, which is not time order: rows inside the autumn fall-back
+  hour swap.  Compare or sort them through
+  `strftime('%Y-%m-%d %H:%M:%S', shopify_created_at)`, which yields the UTC
+  instant in the same text form as every other timestamp, so a UTC bound
+  built in PHP compares against it correctly.  That normalises rather than
+  converting for display, so the rule above does not forbid it.
 
 ## Permissions & auth
 
