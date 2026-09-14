@@ -15,6 +15,13 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Debian's cron ignores every job in a cron.d file whose last line has no
+# newline, and says so only in its own log.
+if [[ -n "$(tail -c1 "$REPO_ROOT/artifacts/cron.tab")" ]]; then
+    echo "Error: artifacts/cron.tab must end in a newline" >&2
+    exit 1
+fi
+
 # ── Log directory ─────────────────────────────────────────────────────────────
 
 if [[ ! -d "$LOG_DIR" ]]; then
