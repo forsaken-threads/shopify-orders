@@ -28,6 +28,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/permissions.php';
 require_once __DIR__ . '/../../app/db.php';
+require_once __DIR__ . '/../../app/normalize.php';
 
 requireApiPermission($config, 'reports');
 
@@ -134,10 +135,10 @@ foreach ($stmt as $r) {
     $units = (int) $r['units'];
 
     // With no products row there is no is_bundle to read, so the line's own
-    // title goes through the rule sync-products.php derives is_bundle by.
+    // title goes through the rule is_bundle is derived by.
     $isBundle = $r['product_id'] !== null
         ? (int) $r['is_bundle'] === 1
-        : (bool) preg_match('/\bbundle\s*$/i', (string) $r['title']);
+        : isBundleTitle((string) $r['title']);
 
     if (!$isBundle) {
         $bottles[(int) $r['ml']] += $units;

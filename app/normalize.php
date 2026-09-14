@@ -25,3 +25,18 @@ function normalizeTitle(string $s): string
 
     return mb_strtolower($s);
 }
+
+/**
+ * Whether a product title names a bundle: the word "bundle" anywhere in it,
+ * case-insensitive.
+ *
+ * Both product writers store products.is_bundle from this, scripts/migrate.php
+ * re-derives stored rows with it, and bottles-sold.php applies it to line items
+ * whose product is gone — so the rule changes here and nowhere else.
+ *
+ * Example: "Celebrity Fragrance Bundle #2" → true
+ */
+function isBundleTitle(string $title): bool
+{
+    return (bool) preg_match('/\bbundle\b/i', $title);
+}

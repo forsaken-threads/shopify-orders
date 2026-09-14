@@ -12,9 +12,9 @@ declare(strict_types=1);
  * Products in all statuses (active, draft, archived) are upserted into the
  * local products table.
  *
- * is_bundle is set to 1 when a product title ends with the word "bundle"
- * (case-insensitive match), allowing bundle products to be identified without
- * re-scanning titles at query time.
+ * is_bundle is set to 1 when a product title contains the word "bundle"
+ * (isBundleTitle() in app/normalize.php), allowing bundle products to be
+ * identified without re-scanning titles at query time.
  *
  * Note: the Shopify products webhook payload does not include metafields by
  * default.  custom_brand will be null unless Shopify is configured to send
@@ -85,8 +85,7 @@ $title     = (string) ($product['title'] ?? '');
 $vendor    = isset($product['vendor']) && $product['vendor'] !== '' ? (string) $product['vendor'] : null;
 $createdAt = isset($product['created_at']) && $product['created_at'] !== '' ? (string) $product['created_at'] : null;
 
-// A product is a bundle when its title ends with the word "bundle" (case-insensitive).
-$isBundle = (int) (bool) preg_match('/\bbundle\s*$/i', $title);
+$isBundle = (int) isBundleTitle($title);
 
 // Extract custom.brand from metafields if Shopify included them in the payload.
 // (Requires a metafield subscription configured in Shopify — absent by default.)

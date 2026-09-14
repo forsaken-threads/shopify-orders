@@ -169,8 +169,7 @@ while ($nextUrl !== null) {
         $status    = (string) ($product['status'] ?? 'active');
         $createdAt = isset($product['created_at']) && $product['created_at'] !== '' ? (string) $product['created_at'] : null;
 
-        // Title ending in "bundle" (word boundary, case-insensitive) → bundle flag.
-        $isBundle = (int) (bool) preg_match('/\bbundle\s*$/i', $title);
+        $isBundle = (int) isBundleTitle($title);
 
         // Fetch custom.brand metafield via API.
         echo "  Fetching brand for product #{$shopifyProductId} \"{$title}\"…\n";

@@ -78,11 +78,9 @@ SQL);
 // Local cache of Shopify products.  Populated by scripts/sync-products.php and
 // kept up-to-date by the products webhook (public/webhooks/products.php).
 //
-// is_bundle = 1 when the product title ends with the word "bundle"
-//             (case-insensitive).  Used to identify bundle products that have
+// is_bundle = 1 when the product title contains the word "bundle"
+//             (isBundleTitle()).  Used to identify bundle products that have
 //             component relationships tracked in bundle_components.
-//
-// Draft products are ignored and never stored here.
 
 $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS products (
@@ -184,6 +182,24 @@ if (!empty($toBackfill)) {
         $backfillStmt->execute([normalizeTitle($row['title']), $row['id']]);
     }
     echo "Backfilled normalized_title for " . count($toBackfill) . " product(s).\n";
+}
+
+// Re-derive is_bundle wherever it disagrees with isBundleTitle(), so a change to
+// the rule reaches products no sync will fetch again.
+$toRederive = [];
+foreach ($pdo->query("SELECT id, title, is_bundle FROM products")->fetchAll() as $row) {
+    $isBundle = (int) isBundleTitle($row['title']);
+    if ($isBundle !== (int) $row['is_bundle']) {
+        $toRederive[$row['id']] = $isBundle;
+    }
+}
+
+if (!empty($toRederive)) {
+    $bundleStmt = $pdo->prepare("UPDATE products SET is_bundle = ? WHERE id = ?");
+    foreach ($toRederive as $id => $isBundle) {
+        $bundleStmt->execute([$isBundle, $id]);
+    }
+    echo "Re-derived is_bundle for " . count($toRederive) . " product(s).\n";
 }
 
 // ── Bundle completion state ──────────────────────────────────────────────────
