@@ -528,6 +528,22 @@ require __DIR__ . '/../app/partials/header.php';
 
     .vip-empty.visible { display: block; }
 
+    /* ── Bottles Sold ── */
+    .bs-dates { display: inline-flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+    .bs-dates[hidden] { display: none; }
+
+    .bs-date-input { width: auto; }
+
+    .bs-note {
+        padding: .6rem .9rem;
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        border-radius: 7px;
+        color: #92400e;
+        font-size: .85rem;
+        line-height: 1.45;
+    }
+
 </style>
 
 <div class="reports-wrap">
@@ -830,6 +846,83 @@ require __DIR__ . '/../app/partials/header.php';
                             <tbody id="vip-rows"></tbody>
                         </table>
                     </div>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 4: Bottles Sold ── -->
+        <div class="accordion-card" id="card-bottles-sold">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-bottles-sold"
+                 onclick="toggleAccordion('card-bottles-sold')">
+                <div class="accordion-header-icon">
+                    <!-- bottle icon -->
+                    <svg viewBox="0 0 24 24">
+                        <path d="M10 2h4"/>
+                        <path d="M10 2v5l-3 3.5V20a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-9.5L14 7V2"/>
+                        <path d="M7 14h10"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Bottles Sold</h2>
+                    <p>How many 1ml, 5ml and 10ml bottles sold over any timeframe — bundles counted as the bottles inside them.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-bottles-sold">
+
+                <div class="tc-controls">
+                    <label class="tc-control-label" for="bs-period">Bottles sold over</label>
+                    <select id="bs-period" class="tc-period-select">
+                        <option value="30d" selected>Last 30 days</option>
+                        <option value="90d">Last 90 days</option>
+                        <option value="ytd">Year to date</option>
+                        <option value="ttm">Trailing 12 months</option>
+                        <option value="all">All time</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <span class="bs-dates" id="bs-dates" hidden>
+                        <label class="tc-control-label" for="bs-from">From</label>
+                        <input type="date" id="bs-from" class="tc-limit-input bs-date-input">
+                        <label class="tc-control-label" for="bs-to">To</label>
+                        <input type="date" id="bs-to" class="tc-limit-input bs-date-input">
+                    </span>
+                    <button type="button" class="tc-load-btn" id="bs-load-btn">Load</button>
+                </div>
+
+                <!-- Loading -->
+                <div class="lookup-loading" id="bs-loading">
+                    <div class="spinner"></div>
+                    Counting bottles…
+                </div>
+
+                <!-- Error -->
+                <div class="lookup-error" id="bs-error"></div>
+
+                <!-- Results -->
+                <div class="results-area" id="bs-results">
+                    <div class="tc-results-header">
+                        <span class="tc-results-count" id="bs-timeframe"></span>
+                    </div>
+                    <div class="summary-pills">
+                        <div class="summary-pill">
+                            <div class="summary-pill-label">1ml</div>
+                            <div class="summary-pill-value" id="bs-ml-1">—</div>
+                        </div>
+                        <div class="summary-pill">
+                            <div class="summary-pill-label">5ml</div>
+                            <div class="summary-pill-value" id="bs-ml-5">—</div>
+                        </div>
+                        <div class="summary-pill">
+                            <div class="summary-pill-label">10ml</div>
+                            <div class="summary-pill-value" id="bs-ml-10">—</div>
+                        </div>
+                    </div>
+                    <p class="bs-note" id="bs-note" hidden></p>
                 </div>
 
             </div><!-- /accordion-body -->
@@ -1387,6 +1480,120 @@ require __DIR__ . '/../app/partials/header.php';
         e.preventDefault();
         window.location.href = apiUrl('vips.php?format=csv');
     });
+}());
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    // apiUrl and toggleAccordion are provided by app/partials/header.php.
+
+    // ── Bottles Sold ────────────────────────────────────────────────────────────
+
+    const periodEl    = document.getElementById('bs-period');
+    const datesEl     = document.getElementById('bs-dates');
+    const fromEl      = document.getElementById('bs-from');
+    const toEl        = document.getElementById('bs-to');
+    const loadBtn     = document.getElementById('bs-load-btn');
+    const loadingEl   = document.getElementById('bs-loading');
+    const errorEl     = document.getElementById('bs-error');
+    const resultsEl   = document.getElementById('bs-results');
+    const timeframeEl = document.getElementById('bs-timeframe');
+    const noteEl      = document.getElementById('bs-note');
+
+    const PERIOD_LABEL = {
+        all: 'All time', '30d': 'Last 30 days', '90d': 'Last 90 days',
+        ytd: 'Year to date', ttm: 'Trailing 12 months',
+    };
+
+    function fmtInt(n) { return Number(n).toLocaleString(); }
+
+    function plural(n, one, many) { return n === 1 ? one : many; }
+
+    // new Date('2026-08-01') is midnight UTC, which is still 31 July anywhere
+    // west of Greenwich, so the parts go in as local time instead.
+    function fmtDate(iso) {
+        const p = iso.split('-').map(Number);
+        return new Date(p[0], p[1] - 1, p[2])
+            .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function noteFor(unexpanded) {
+        const notes = [];
+        let n = unexpanded.not_set_up;
+        if (n > 0) {
+            notes.push(fmtInt(n) + plural(n, ' bundle', ' bundles') + ' sold in this timeframe ' +
+                plural(n, 'is', 'are') + ' not counted above: ' + plural(n, 'its', 'their') +
+                ' contents need setting up on the Bundles page.');
+        }
+        n = unexpanded.not_on_bundles_page;
+        if (n > 0) {
+            notes.push(fmtInt(n) + plural(n, ' bundle', ' bundles') + ' sold in this timeframe ' +
+                plural(n, 'is', 'are') + ' not counted above: ' + plural(n, 'it is a draft', 'they are drafts') +
+                ' or no longer in the product catalog, so ' + plural(n, 'its', 'their') + ' contents are not recorded.');
+        }
+        return notes.join(' ');
+    }
+
+    function load() {
+        let query = 'period=' + encodeURIComponent(periodEl.value);
+        if (periodEl.value === 'custom') {
+            query += '&from=' + encodeURIComponent(fromEl.value) + '&to=' + encodeURIComponent(toEl.value);
+        }
+
+        loadBtn.disabled = true;
+        errorEl.classList.remove('visible');
+        resultsEl.classList.remove('visible');
+        loadingEl.classList.add('visible');
+
+        fetch(apiUrl('bottles-sold.php?' + query))
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
+                return r.json();
+            })
+            .then(function (data) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                render(data);
+            })
+            .catch(function (msg) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                errorEl.textContent = typeof msg === 'string' ? msg : 'Failed to count bottles.';
+                errorEl.classList.add('visible');
+            });
+    }
+
+    function render(data) {
+        let timeframe = PERIOD_LABEL[data.period];
+        if (data.period === 'custom') {
+            timeframe = data.from === data.to
+                ? fmtDate(data.from)
+                : fmtDate(data.from) + ' – ' + fmtDate(data.to);
+        }
+        timeframeEl.textContent = 'Bottles sold · ' + timeframe;
+
+        data.sizes.forEach(function (s) {
+            document.getElementById('bs-ml-' + s.ml).textContent = fmtInt(s.bottles);
+        });
+
+        const note = noteFor(data.unexpanded);
+        noteEl.textContent = note;
+        noteEl.hidden = note === '';
+
+        resultsEl.classList.add('visible');
+    }
+
+    periodEl.addEventListener('change', function () {
+        const custom = periodEl.value === 'custom';
+        datesEl.hidden = !custom;
+        // Custom's dates are still empty the moment it is picked, so it waits
+        // for Load rather than answering with an error.
+        if (!custom && resultsEl.classList.contains('visible')) load();
+    });
+
+    loadBtn.addEventListener('click', load);
 }());
 </script>
 
