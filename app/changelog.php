@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.24.0',
+        'date'    => '2026-09-14',
+        'title'   => 'See how many bottles of each size sold',
+        'notes'   => [
+            'Reports has a new Bottles Sold card.  It shows how many 1ml, 5ml and 10ml bottles sold over the last 30 days, the last 90 days, the year to date, the trailing 12 months or all time.',
+            'Choose Custom to pick your own From and To dates.  Both days are included in full, so From 1 August to 1 August covers the whole of 1 August.',
+            'A bundle counts as the bottles inside it, so a bundle of eight samples adds eight bottles.  That only works for bundles marked complete on the Bundles page.',
+            'When some bundles sold in the timeframe could not be counted, a yellow note under the figures says how many.  Active bundles it mentions can be set up on the Bundles page so they count; drafts and bundles no longer in the catalog cannot.',
+            'Over long timeframes such as All time, a few bottles from older refunded orders may still be counted.',
+        ],
+    ],
+    [
         'version' => '1.23.0',
         'date'    => '2026-09-10',
         'title'   => 'Printing tells you when the label printer is offline',
