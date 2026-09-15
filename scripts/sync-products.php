@@ -93,10 +93,11 @@ $errors     = 0;
 $pageCount  = 0;
 $brandCache = []; // product ID → ?string; shared across all pages
 
-// Collect every Shopify product ID seen during an --all-products run so we can
-// soft-delete local rows that Shopify no longer returns (i.e. deleted products).
-// Only populated when $allProducts is true; left empty for the 25 h default run.
-$syncedShopifyIds = [];
+// Collect every Shopify product ID the listing returns during an --all-products
+// run so we can soft-delete local rows that Shopify no longer returns (i.e.
+// deleted products).  Only populated when $allProducts is true; left empty for
+// the 25 h default run.
+$listedShopifyIds = [];
 
 // Build the initial URL.
 // Default: updated in the prior 25 hours so a daily cron catches anything
@@ -164,6 +165,12 @@ while ($nextUrl !== null) {
             continue;
         }
 
+        // Before the upsert, not after it succeeds: a product whose write fails
+        // below still exists in Shopify, and reconciliation must not delete it.
+        if ($allProducts) {
+            $listedShopifyIds[$shopifyProductId] = true;
+        }
+
         $title     = (string) ($product['title'] ?? '');
         $vendor    = isset($product['vendor']) && $product['vendor'] !== '' ? (string) $product['vendor'] : null;
         $status    = (string) ($product['status'] ?? 'active');
@@ -190,10 +197,6 @@ while ($nextUrl !== null) {
                 ':shopify_created_at'  => $createdAt,
             ]);
 
-            if ($allProducts) {
-                $syncedShopifyIds[$shopifyProductId] = true;
-            }
-
             $bundleTag = $isBundle ? ' [BUNDLE]' : '';
             $brandTag  = $customBrand !== null ? " (brand: {$customBrand})" : '';
             echo "  Synced  \"{$title}\"{$bundleTag}{$brandTag}\n";
@@ -213,17 +216,23 @@ while ($nextUrl !== null) {
 // Soft-delete any local product that Shopify did not return in the full listing.
 // These are products that were deleted in Shopify since the last full sync.
 // Skipped for the default 25 h run — rely on the products/delete webhook instead.
+// Only rows in a status the listing requested are candidates: a product in any
+// other status was never going to be returned, so its absence proves nothing.
 
 $softDeleted = 0;
 
 if ($allProducts) {
     echo "\nReconciling local products against full Shopify catalogue…\n";
 
-    $localRows = $db
-        ->query("SELECT shopify_product_id FROM products WHERE deleted_at IS NULL")
-        ->fetchAll(PDO::FETCH_COLUMN);
+    $listedStatuses = explode(',', $queryParams['status']);
+    $localStmt      = $db->prepare(
+        "SELECT shopify_product_id FROM products WHERE deleted_at IS NULL AND status IN ("
+        . implode(', ', array_fill(0, count($listedStatuses), '?')) . ")"
+    );
+    $localStmt->execute($listedStatuses);
+    $localRows = $localStmt->fetchAll(PDO::FETCH_COLUMN);
 
-    $toDelete = array_diff($localRows, array_keys($syncedShopifyIds));
+    $toDelete = array_diff($localRows, array_keys($listedShopifyIds));
 
     if (!empty($toDelete)) {
         $deleteStmt = $db->prepare(
