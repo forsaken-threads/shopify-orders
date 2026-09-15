@@ -73,6 +73,38 @@ $vips = currentVipScores($db);
 // Same shape, same key: who has already spent the postcard code.
 $vipCodeUse = vipCodeRedemptions($db);
 
+// Same key again: every open order whose customer has more than one.  It spans
+// both open statuses and every page, because a pending order's other order may
+// be printed, or further down the list.  A blank email is nobody in particular,
+// so it never groups.
+$openByCustomer = [];
+if ($filterStatus === 'pending' || $filterStatus === 'printed') {
+    $openRows = $db->query("
+        SELECT o.id, o.order_number, o.customer_name, o.customer_email,
+               o.total_price, o.currency, o.status, o.discount_codes, o.shopify_created_at,
+               LOWER(o.customer_email) AS email_key,
+               COALESCE(
+                   (SELECT SUM(li.quantity) FROM order_line_items li WHERE li.order_id = o.id),
+                   0
+               ) AS total_quantity
+        FROM   orders o
+        WHERE  o.status IN ('pending', 'printed')
+          AND  LOWER(o.customer_email) IN (
+                   SELECT   LOWER(customer_email)
+                   FROM     orders
+                   WHERE    status IN ('pending', 'printed')
+                     AND    customer_email != ''
+                   GROUP BY LOWER(customer_email)
+                   HAVING   COUNT(*) > 1
+               )
+        ORDER  BY strftime('%Y-%m-%d %H:%M:%S', o.shopify_created_at) ASC
+    ")->fetchAll();
+
+    foreach ($openRows as $row) {
+        $openByCustomer[(string) $row['email_key']][] = $row;
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pageUrl(int $page, string $status): string
@@ -107,6 +139,17 @@ function discountCodesHtml(string $stored): string
     }
 
     return $html;
+}
+
+function orderDate(string $stored, string $timezone): string
+{
+    try {
+        return (new DateTimeImmutable($stored))
+            ->setTimezone(new DateTimeZone($timezone))
+            ->format('d M Y, H:i');
+    } catch (Exception) {
+        return $stored;
+    }
 }
 
 // Number of visible columns (used for accordion colspan).
@@ -169,6 +212,11 @@ require __DIR__ . '/../app/partials/header.php';
                 $oid      = (int) $order['id'];
                 $emailKey = strtolower((string) $order['customer_email']);
                 $vip      = $vips[$emailKey] ?? null;
+                $related  = array_values(array_filter(
+                    $openByCustomer[$emailKey] ?? [],
+                    fn(array $other): bool => (int) $other['id'] !== $oid
+                ));
+                $relatedIds = array_map(fn(array $other): string => 'related-' . $oid . '-' . (int) $other['id'], $related);
             ?>
                 <tr class="order-row" data-order-id="<?= $oid ?>">
                     <td class="col-expand">
@@ -178,7 +226,15 @@ require __DIR__ . '/../app/partials/header.php';
                                 data-order-id="<?= $oid ?>"
                                 title="Show order details">+</button>
                     </td>
-                    <td><span class="order-num"><?= h($order['order_number']) ?></span></td>
+                    <td>
+                        <span class="order-num"><?= h($order['order_number']) ?></span>
+                        <?php if ($related !== []): ?>
+                        <button class="btn-related"
+                                aria-expanded="false"
+                                aria-controls="<?= h(implode(' ', $relatedIds)) ?>"
+                                title="<?= h('This customer has ' . count($related) . ' other open ' . (count($related) === 1 ? 'order' : 'orders')) ?>">+<?= count($related) ?> open</button>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <?= h($order['customer_name']) ?>
                         <?= vipBadgeHtml($vip) ?>
@@ -192,13 +248,7 @@ require __DIR__ . '/../app/partials/header.php';
                     <td class="qty hide-mobile"><?= (int) $order['total_quantity'] ?></td>
                     <td class="hide-mobile"><?= statusBadge($order['status']) ?></td>
                     <td class="hide-mobile"><?= discountCodesHtml((string) $order['discount_codes']) ?></td>
-                    <td><?= h((function($d) use ($config) {
-                        try {
-                            return (new DateTimeImmutable($d))
-                                ->setTimezone(new DateTimeZone($config['display_timezone']))
-                                ->format('d M Y, H:i');
-                        } catch (Exception) { return $d; }
-                    })($order['shopify_created_at'])) ?></td>
+                    <td><?= h(orderDate((string) $order['shopify_created_at'], $config['display_timezone'])) ?></td>
                     <?php if ($filterStatus === 'pending'): ?>
                     <td>
                         <button class="btn-print"
@@ -259,6 +309,27 @@ require __DIR__ . '/../app/partials/header.php';
                     </td>
                     <?php endif; ?>
                 </tr>
+                <?php /* Read-only on purpose: no order-row class, no data-order-id and no
+                         action buttons, so markOrderPrinted()'s selector and the handlers
+                         wired by class cannot mistake one for the order's own row. */ ?>
+                <?php foreach ($related as $i => $other): ?>
+                <tr class="related-order-row" id="<?= h($relatedIds[$i]) ?>" hidden>
+                    <td class="col-expand related-marker">&#8627;</td>
+                    <td><span class="order-num"><?= h($other['order_number']) ?></span></td>
+                    <td>
+                        <?= h($other['customer_name']) ?>
+                        <div class="customer-email"><?= h($other['customer_email']) ?></div>
+                    </td>
+                    <td class="price hide-mobile">
+                        <?= h($other['currency']) ?> <?= h(number_format((float) $other['total_price'], 2)) ?>
+                    </td>
+                    <td class="qty hide-mobile"><?= (int) $other['total_quantity'] ?></td>
+                    <td class="hide-mobile"><?= statusBadge($other['status']) ?></td>
+                    <td class="hide-mobile"><?= discountCodesHtml((string) $other['discount_codes']) ?></td>
+                    <td><?= h(orderDate((string) $other['shopify_created_at'], $config['display_timezone'])) ?></td>
+                    <?= str_repeat('<td></td>', $colCount - 8) ?>
+                </tr>
+                <?php endforeach; ?>
                 <!-- Detail row — content loaded asynchronously on first expand -->
                 <tr class="order-detail-row" id="detail-<?= $oid ?>" hidden>
                     <td colspan="<?= $colCount ?>">
@@ -654,6 +725,33 @@ body { min-height: 0; }
 
 /* Row printed state (mirrors archived-row) */
 tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events: none; }
+
+/* ── Other open orders from the same customer ───────────────────────── */
+/* Neutral like the discount-code chip: a count of orders is not a status, and
+   it sits in the same row as a status badge. */
+.btn-related {
+    display: inline-block;
+    margin-left: .35rem;
+    padding: .15em .45em;
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+    font-size: .7rem;
+    font-weight: 700;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+}
+
+.btn-related:hover,
+.btn-related[aria-expanded="true"] { background: var(--accent, #4f46e5); color: #fff; border-color: var(--accent, #4f46e5); }
+
+/* Secondary rather than faded: a faded, struck-through row already means printed or archived. */
+tr.related-order-row td { background: var(--bg-subtle, #f9fafb); font-size: .8rem; color: #6b7280; }
+tr.related-order-row .order-num { font-size: .85rem; }
+.related-marker { color: #9ca3af; text-align: center; }
 </style>
 
 <script>
@@ -804,6 +902,18 @@ tr.printed-row td { opacity: .35; text-decoration: line-through; pointer-events:
                         '<div style="color:#b91c1c;padding:.5rem 0;font-size:.85rem;">' +
                         'Failed to load order details: ' + esc(err.message) + '</div>';
                 });
+        });
+    });
+
+    // ── Other open orders from the same customer ───────────────────────────────
+    document.querySelectorAll('.btn-related').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var open = btn.getAttribute('aria-expanded') !== 'true';
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            btn.getAttribute('aria-controls').split(' ').forEach(function (id) {
+                var row = document.getElementById(id);
+                if (row) row.hidden = !open;
+            });
         });
     });
 
