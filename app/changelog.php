@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.25.0',
+        'date'    => '2026-09-15',
+        'title'   => 'See when a customer has more than one order waiting',
+        'notes'   => [
+            'On the Orders list, an order whose customer has other orders waiting now shows a small "+1 open" tag beside its order number, or +2, +3 and so on.  Waiting means pending or printed, but not yet fulfilled.',
+            'Click the tag to list those other orders underneath, with their total, items, status and order date.  Click it again to hide them.',
+            'It counts every waiting order from the same email address, including ones on the other tab or further down the list.',
+            'The orders listed underneath are there to look at only.  To print or change one, use its own row.',
+            'After you print, archive or move an order, the tags and the orders listed underneath catch up the next time the page loads.',
+        ],
+    ],
+    [
         'version' => '1.24.0',
         'date'    => '2026-09-14',
         'title'   => 'See how many bottles of each size sold',
