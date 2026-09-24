@@ -59,6 +59,7 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../../app/config.php';
 require_once __DIR__ . '/../../app/db.php';
 require_once __DIR__ . '/../../app/permissions.php';
+require_once __DIR__ . '/../../app/print-host.php';
 
 requireApiPermission($config, 'orders');
 
@@ -226,30 +227,7 @@ if ($action === 'bundle') {
 }
 $allowedProductIds = array_filter(array_map('strval', $allowed), static fn(string $id): bool => $id !== '');
 
-/**
- * Whether ssh gave up before it ever reached the print host.
- *
- * Keyed on ssh's own wording rather than on the errno text after the colon:
- * musl writes "Operation timed out" where glibc writes "Connection timed
- * out", so the container and a dev box word one failure two ways.  The two
- * prefixes cover connect timeout, refused, no route and DNS.  A connection
- * that dropped mid-transfer words itself differently and stays retryable,
- * which is the distinction the retry rule needs.
- */
-function printHostUnreachable(string $sshOutput): bool
-{
-    return str_contains($sshOutput, 'ssh: connect to host ')
-        || str_contains($sshOutput, 'ssh: Could not resolve hostname ');
-}
-
-// SSH options for every label and for the probe below.
-// ConnectTimeout: fail fast if the printer host is unreachable.
-// ServerAliveInterval/CountMax: detect a stalled connection within 15s.
-// -4: the print host answers on IPv4 only — its AAAA record resolves but
-// drops inbound SSH, so without this a container with a v6 route would
-// burn ConnectTimeout on v6 before falling back on every single label.
-$sshOpts   = '-4 -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3';
-$sshPrefix = "ssh {$sshOpts} " . escapeshellarg($config['print_ssh_target']) . ' ';
+$sshPrefix = printSshPrefix($config);
 
 $hostUnreachable  = false;
 $unreachableError = 'Printer host unreachable — this label was not sent.';
@@ -308,7 +286,7 @@ foreach ($items as $idx => $item) {
     $mlArg = $isOrderLabel
         ? 'Order'
         : ($isBundleLabel ? 'Bundle' : $ml . 'ml');
-    $remoteCmd = '~/print-service/venv/bin/python3 ~/print-service/print-label.py '
+    $remoteCmd = PRINT_SERVICE_PYTHON . ' ' . PRINT_SERVICE_SCRIPT . ' '
                . escapeshellarg($mlArg) . ' ' . escapeshellarg($title) . ' ' . escapeshellarg($brand);
     $cmd = $sshPrefix . escapeshellarg($remoteCmd);
 

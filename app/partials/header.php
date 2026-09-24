@@ -1032,7 +1032,7 @@ function escHtml(str) {
 
 /**
  * Toggle an accordion card open/closed.
- * Called via onclick="toggleAccordion('card-id')" in charts.php and reports.php.
+ * Called via onclick="toggleAccordion('card-id')" in charts.php, reports.php and tools.php.
  */
 function toggleAccordion(cardId) {
     var card   = document.getElementById(cardId);
@@ -1121,6 +1121,9 @@ function toggleAccordion(cardId) {
         <a href="profile.php" role="menuitem">Profile</a>
         <?php if (userCan($navUser, 'manage_users')): ?>
             <a href="users.php" role="menuitem">Users</a>
+        <?php endif; ?>
+        <?php if (userCan($navUser, 'tools')): ?>
+            <a href="tools.php" role="menuitem">Tools</a>
         <?php endif; ?>
         <div class="user-menu-sep"></div>
         <?php if ($origUsername !== ''): ?>

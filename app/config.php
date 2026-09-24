@@ -67,12 +67,20 @@ if (is_file($routeIniPath)) {
     }
 }
 
+// The source is kept beside the target so the Tools printer check can say why
+// this target was chosen.  route_unset is a route naming no env.ini key, which
+// lands on the default exactly as no route does, but is a misconfiguration.
 $printSshTarget = (string) (getenv('PRINT_SSH_TARGET') ?: '');
+$printSshTargetSource = 'pinned';
 if ($printSshTarget === '' && $printRoute !== '') {
     $printSshTarget = (string) (getenv('PRINT_SSH_TARGET_' . $printRoute) ?: '');
+    $printSshTargetSource = $printSshTarget !== '' ? 'route' : 'route_unset';
 }
 if ($printSshTarget === '') {
     $printSshTarget = 'keith@percival.spartang.com';
+    if ($printSshTargetSource === 'pinned') {
+        $printSshTargetSource = 'default';
+    }
 }
 
 return [
@@ -99,6 +107,11 @@ return [
     // user@host passed to ssh by print-order.php.  Resolved above from
     // PRINT_SSH_TARGET, else the route in route.ini, else the prod default.
     'print_ssh_target'       => $printSshTarget,
+    // pinned | route | route_unset | default, and the route route.ini named
+    // (upper-cased, '' for none), for the Tools printer check.
+    'print_target_source'    => $printSshTargetSource,
+    'print_route'            => $printRoute,
+    'print_route_ini_path'   => $routeIniPath,
     // ── SMTP (used by app/mailer.php for password-reset emails) ─────────────
     'smtp_host'              => (string) (getenv('SMTP_HOST')              ?: ''),
     'smtp_port'              => (int)    (getenv('SMTP_PORT')              ?: 587),
