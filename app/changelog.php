@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.26.0',
+        'date'    => '2026-09-24',
+        'title'   => 'See which products have barely sold',
+        'notes'   => [
+            'Reports has a new Slow Sellers card.  It lists every active product that has sold 5ml or less in total, ever, including products that have never sold at all.',
+            'Products that have never sold are listed first and marked Never sold, followed by the rest from least sold to most.',
+            'Each product shows when it last sold and when it was added to the store, so a product added last week can be told apart from one that has sat for years.',
+            'Tick Count bottles sold in bundles to also count bottles that sold inside a bundle.  That only works for bundles marked complete on the Bundles page.',
+            'Bundles themselves, drafts and deleted products are not listed.',
+        ],
+    ],
+    [
         'version' => '1.25.0',
         'date'    => '2026-09-15',
         'title'   => 'See when a customer has more than one order waiting',
