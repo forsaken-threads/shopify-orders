@@ -61,9 +61,14 @@ if (is_file($shopifyIniPath)) {
 $routeIniPath = __DIR__ . '/../route.ini';
 $printRoute   = '';
 if (is_file($routeIniPath)) {
-    $routeIni = parse_ini_file($routeIniPath);
-    if (is_array($routeIni)) {
-        $printRoute = strtoupper(trim((string) ($routeIni['route'] ?? '')));
+    // Not parse_ini_file(): the host file is shell-style, its # comments are
+    // not ini comments, and one "(" in them fails the whole parse.  Read the
+    // one key the way sync-print-route.sh does.
+    foreach (file($routeIniPath) ?: [] as $line) {
+        if (preg_match('/^\s*route\s*=\s*(\S*)/', $line, $m)) {
+            $printRoute = strtoupper($m[1]);
+            break;
+        }
     }
 }
 
