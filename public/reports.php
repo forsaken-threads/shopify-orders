@@ -544,6 +544,18 @@ require __DIR__ . '/../app/partials/header.php';
         line-height: 1.45;
     }
 
+    /* ── Slow Sellers ── */
+    .ss-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        font-size: .85rem;
+        color: #555;
+        cursor: pointer;
+    }
+
+    .ss-never { color: #c0392b; font-weight: 600; }
+
 </style>
 
 <div class="reports-wrap">
@@ -923,6 +935,69 @@ require __DIR__ . '/../app/partials/header.php';
                         </div>
                     </div>
                     <p class="bs-note" id="bs-note" hidden></p>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 5: Slow Sellers ── -->
+        <div class="accordion-card" id="card-slow-sellers">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-slow-sellers"
+                 onclick="toggleAccordion('card-slow-sellers')">
+                <div class="accordion-header-icon">
+                    <!-- trending-down icon -->
+                    <svg viewBox="0 0 24 24">
+                        <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/>
+                        <polyline points="17 18 23 18 23 12"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Slow Sellers</h2>
+                    <p>Active products that have sold 5ml or less, ever — including those that have never sold.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-slow-sellers">
+
+                <div class="tc-controls">
+                    <label class="ss-toggle">
+                        <input type="checkbox" id="ss-bundles">
+                        Count bottles sold in bundles
+                    </label>
+                    <button type="button" class="tc-load-btn" id="ss-load-btn">Load</button>
+                </div>
+
+                <!-- Loading -->
+                <div class="lookup-loading" id="ss-loading">
+                    <div class="spinner"></div>
+                    Adding up sales…
+                </div>
+
+                <!-- Error -->
+                <div class="lookup-error" id="ss-error"></div>
+
+                <!-- Results -->
+                <div class="results-area" id="ss-results">
+                    <div class="tc-results-header">
+                        <span class="tc-results-count" id="ss-count"></span>
+                    </div>
+                    <div class="tc-table-wrap">
+                        <table class="tc-table">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th class="tc-col-num">Sold</th>
+                                    <th class="tc-col-num">Last Sold</th>
+                                    <th class="tc-col-num">Added</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ss-rows"></tbody>
+                        </table>
+                    </div>
                 </div>
 
             </div><!-- /accordion-body -->
@@ -1593,6 +1668,88 @@ require __DIR__ . '/../app/partials/header.php';
         if (!custom && resultsEl.classList.contains('visible')) load();
     });
 
+    loadBtn.addEventListener('click', load);
+}());
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    // escHtml, apiUrl and toggleAccordion are provided by app/partials/header.php.
+
+    // ── Slow Sellers ────────────────────────────────────────────────────────────
+
+    const bundlesEl = document.getElementById('ss-bundles');
+    const loadBtn   = document.getElementById('ss-load-btn');
+    const loadingEl = document.getElementById('ss-loading');
+    const errorEl   = document.getElementById('ss-error');
+    const resultsEl = document.getElementById('ss-results');
+    const countEl   = document.getElementById('ss-count');
+    const rowsEl    = document.getElementById('ss-rows');
+
+    function fmtInt(n) { return Number(n).toLocaleString(); }
+
+    // new Date('2026-08-01') is midnight UTC, which is still 31 July anywhere
+    // west of Greenwich, so the parts go in as local time instead.
+    function fmtDate(iso) {
+        if (!iso) return '';
+        const p = iso.split('-').map(Number);
+        return new Date(p[0], p[1] - 1, p[2])
+            .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function load() {
+        loadBtn.disabled = true;
+        errorEl.classList.remove('visible');
+        resultsEl.classList.remove('visible');
+        loadingEl.classList.add('visible');
+
+        fetch(apiUrl('slow-sellers.php?bundles=' + (bundlesEl.checked ? '1' : '0')))
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
+                return r.json();
+            })
+            .then(function (data) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                render(data);
+            })
+            .catch(function (msg) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                errorEl.textContent = typeof msg === 'string' ? msg : 'Failed to load slow sellers.';
+                errorEl.classList.add('visible');
+            });
+    }
+
+    function render(data) {
+        const list  = data.products || [];
+        const never = list.filter(function (p) { return p.ml === 0; }).length;
+
+        countEl.textContent = fmtInt(list.length) + ' product' + (list.length === 1 ? '' : 's') +
+            ' · ' + fmtInt(never) + ' never sold';
+
+        if (list.length === 0) {
+            rowsEl.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#aaa;padding:1.5rem;">' +
+                'Every active product has sold more than ' + data.max_ml + 'ml.</td></tr>';
+        } else {
+            let html = '';
+            list.forEach(function (p) {
+                html += '<tr>' +
+                    '<td>' + escHtml(p.title) + '</td>' +
+                    '<td class="tc-col-num">' +
+                        (p.ml === 0 ? '<span class="ss-never">Never sold</span>' : fmtInt(p.ml) + 'ml') + '</td>' +
+                    '<td class="tc-col-num">' + fmtDate(p.last_sold) + '</td>' +
+                    '<td class="tc-col-num">' + fmtDate(p.added) + '</td>' +
+                    '</tr>';
+            });
+            rowsEl.innerHTML = html;
+        }
+        resultsEl.classList.add('visible');
+    }
+
+    bundlesEl.addEventListener('change', load);
     loadBtn.addEventListener('click', load);
 }());
 </script>
