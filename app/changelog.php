@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.27.0',
+        'date'    => '2026-09-25',
+        'title'   => 'See which products are out of stock',
+        'notes'   => [
+            'Reports has a new Out of Stock card.  It lists every active product that has at least one size at zero in Shopify, and which sizes those are.',
+            'A product with every size at zero is marked Sold out, and those are listed first.  After them, products are listed by brand.',
+            'Use the Size menu to see only the products out of one size, such as 10ml, and tick Sold out only to see just the sold-out ones.',
+            'The stock shown is what Shopify last sent for each product, and Shopify sends it after every sale.  Click Load again to see the latest.',
+            'Bundles, drafts and deleted products are not listed.',
+        ],
+    ],
+    [
         'version' => '1.26.0',
         'date'    => '2026-09-24',
         'title'   => 'See which products have barely sold',

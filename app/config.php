@@ -94,7 +94,7 @@ return [
     // user-visible changes worth recording in app/changelog.php.  The header
     // bell icon shows an unseen-changes badge when this differs from the
     // signed-in user's preferences.last_version_seen.
-    'app_version'            => '1.26.0',
+    'app_version'            => '1.27.0',
     'shopify_webhook_secret' => (string) (getenv('SHOPIFY_WEBHOOK_SECRET') ?: ''),
     'shopify_api_key'        => (string) (getenv('SHOPIFY_API_KEY')        ?: ''),
     'shopify_api_secret'     => (string) (getenv('SHOPIFY_API_SECRET')     ?: ''),
