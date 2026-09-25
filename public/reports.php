@@ -556,6 +556,9 @@ require __DIR__ . '/../app/partials/header.php';
 
     .ss-never { color: #c0392b; font-weight: 600; }
 
+    /* ── Out of Stock ── */
+    .oos-sold-out { color: #c0392b; font-weight: 600; }
+
 </style>
 
 <div class="reports-wrap">
@@ -996,6 +999,73 @@ require __DIR__ . '/../app/partials/header.php';
                                 </tr>
                             </thead>
                             <tbody id="ss-rows"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 6: Out of Stock ── -->
+        <div class="accordion-card" id="card-out-of-stock">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-out-of-stock"
+                 onclick="toggleAccordion('card-out-of-stock')">
+                <div class="accordion-header-icon">
+                    <!-- package icon -->
+                    <svg viewBox="0 0 24 24">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                        <line x1="12" y1="22.08" x2="12" y2="12"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Out of Stock</h2>
+                    <p>Active products with any size at zero inventory in Shopify, sold-out products first.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-out-of-stock">
+
+                <div class="tc-controls">
+                    <label class="tc-control-label" for="oos-size">Size</label>
+                    <select id="oos-size" class="tc-period-select">
+                        <option value="">All sizes</option>
+                    </select>
+                    <label class="ss-toggle">
+                        <input type="checkbox" id="oos-sold-out">
+                        Sold out only
+                    </label>
+                    <button type="button" class="tc-load-btn" id="oos-load-btn">Load</button>
+                </div>
+
+                <!-- Loading -->
+                <div class="lookup-loading" id="oos-loading">
+                    <div class="spinner"></div>
+                    Checking stock…
+                </div>
+
+                <!-- Error -->
+                <div class="lookup-error" id="oos-error"></div>
+
+                <!-- Results -->
+                <div class="results-area" id="oos-results">
+                    <div class="tc-results-header">
+                        <span class="tc-results-count" id="oos-count"></span>
+                    </div>
+                    <div class="tc-table-wrap">
+                        <table class="tc-table">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Brand</th>
+                                    <th>Out of Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody id="oos-rows"></tbody>
                         </table>
                     </div>
                 </div>
@@ -1750,6 +1820,109 @@ require __DIR__ . '/../app/partials/header.php';
     }
 
     bundlesEl.addEventListener('change', load);
+    loadBtn.addEventListener('click', load);
+}());
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    // escHtml and apiUrl are provided by app/partials/header.php.
+
+    // ── Out of Stock ────────────────────────────────────────────────────────────
+
+    const sizeEl    = document.getElementById('oos-size');
+    const soldOutEl = document.getElementById('oos-sold-out');
+    const loadBtn   = document.getElementById('oos-load-btn');
+    const loadingEl = document.getElementById('oos-loading');
+    const errorEl   = document.getElementById('oos-error');
+    const resultsEl = document.getElementById('oos-results');
+    const countEl   = document.getElementById('oos-count');
+    const rowsEl    = document.getElementById('oos-rows');
+
+    // The whole list is fetched once; the size and sold-out filters narrow it here.
+    let products = null;
+
+    function fmtInt(n) { return Number(n).toLocaleString(); }
+
+    function load() {
+        loadBtn.disabled = true;
+        errorEl.classList.remove('visible');
+        resultsEl.classList.remove('visible');
+        loadingEl.classList.add('visible');
+
+        fetch(apiUrl('out-of-stock.php'))
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
+                return r.json();
+            })
+            .then(function (data) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                products = data.products || [];
+                fillSizes();
+                render();
+            })
+            .catch(function (msg) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                errorEl.textContent = typeof msg === 'string' ? msg : 'Failed to load out-of-stock products.';
+                errorEl.classList.add('visible');
+            });
+    }
+
+    // Offer only the sizes that are actually out, keeping the choice across reloads.
+    function fillSizes() {
+        const seen = {};
+        products.forEach(function (p) { p.sizes.forEach(function (s) { seen[s] = true; }); });
+        const sizes = Object.keys(seen).map(Number).sort(function (a, b) { return a - b; });
+
+        const chosen = sizeEl.value;
+        let html = '<option value="">All sizes</option>';
+        sizes.forEach(function (s) { html += '<option value="' + s + '">' + s + 'ml</option>'; });
+        sizeEl.innerHTML = html;
+        sizeEl.value = sizes.indexOf(Number(chosen)) === -1 ? '' : chosen;
+    }
+
+    function render() {
+        const size = sizeEl.value === '' ? null : Number(sizeEl.value);
+        const list = products.filter(function (p) {
+            return (!soldOutEl.checked || p.sold_out) && (size === null || p.sizes.indexOf(size) !== -1);
+        });
+        const soldOut = list.filter(function (p) { return p.sold_out; }).length;
+
+        countEl.textContent = fmtInt(list.length) + ' product' + (list.length === 1 ? '' : 's') +
+            ' · ' + fmtInt(soldOut) + ' sold out';
+
+        if (list.length === 0) {
+            rowsEl.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#aaa;padding:1.5rem;">' +
+                (products.length === 0 ? 'Every active product has stock in every size.' : 'Nothing matches these filters.') +
+                '</td></tr>';
+        } else {
+            let html = '';
+            list.forEach(function (p) {
+                const sizes = p.sizes.map(function (s) { return s + 'ml'; }).join(', ');
+                const out   = p.sold_out
+                    ? '<span class="oos-sold-out">Sold out</span>' + (sizes ? ' · ' + sizes : '')
+                    : sizes;
+                html += '<tr>' +
+                    '<td>' + escHtml(p.title) + '</td>' +
+                    '<td>' + escHtml(p.brand) + '</td>' +
+                    '<td>' + out + '</td>' +
+                    '</tr>';
+            });
+            rowsEl.innerHTML = html;
+        }
+        resultsEl.classList.add('visible');
+    }
+
+    function refilter() {
+        if (products === null) load(); else render();
+    }
+
+    sizeEl.addEventListener('change', refilter);
+    soldOutEl.addEventListener('change', refilter);
     loadBtn.addEventListener('click', load);
 }());
 </script>
