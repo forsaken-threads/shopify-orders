@@ -10,7 +10,8 @@ declare(strict_types=1);
  *
  * Flow:
  *   1. Visit /install.php
- *        → if a working token already exists, shows a status page.
+ *        → if a working token already exists and holds every scope in
+ *          $scopes, shows a status page.
  *        → otherwise redirects to the Shopify OAuth consent page.
  *   2. Merchant approves the app in Shopify admin.
  *        → Shopify redirects back to /install.php?code=…&hmac=…&shop=…
@@ -31,6 +32,9 @@ $apiSecret  = $config['shopify_api_secret'];
 $shopDomain = $config['shopify_shop_domain'];
 $apiVersion = $config['shopify_api_version'];
 $iniPath    = $config['shopify_ini_path'];
+
+// write_inventory is for setting stock from the Out of Stock report.
+$scopes = ['read_products', 'read_orders', 'write_inventory'];
 
 if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
     http_response_code(500);
@@ -289,7 +293,19 @@ if ($existingToken !== '') {
     $testStatusLine = $http_response_header[0] ?? '';
     $tokenWorking   = $testResponse !== false && preg_match('#HTTP/\S+\s+200#', $testStatusLine);
 
+    // A token minted before a scope was added to $scopes still answers
+    // shop.json, so it would read as working here while every call needing
+    // the new scope is refused.  Anything missing sends this visit to consent.
+    $granted = [];
     if ($tokenWorking) {
+        $scopesResponse = @file_get_contents(sprintf('https://%s/admin/oauth/access_scopes.json', $shopDomain), false, $testContext);
+        $scopesData     = $scopesResponse !== false ? json_decode($scopesResponse, associative: true) : null;
+        foreach ((is_array($scopesData) ? $scopesData['access_scopes'] ?? [] : []) as $scope) {
+            $granted[] = (string) ($scope['handle'] ?? '');
+        }
+    }
+
+    if ($tokenWorking && array_diff($scopes, $granted) === []) {
         renderPage('Installation', <<<HTML
             <div class="card-icon icon-success">
                 <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -301,7 +317,7 @@ if ($existingToken !== '') {
         HTML);
     }
 
-    // Token exists but failed the test — fall through to OAuth flow below.
+    // Token exists but failed the test or lacks a scope — fall through to OAuth flow below.
 }
 
 // ── Step 1: Redirect to Shopify OAuth consent page ───────────────────────────
@@ -310,7 +326,7 @@ $authUrl = sprintf(
     'https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s',
     $shopDomain,
     rawurlencode($apiKey),
-    rawurlencode('read_products,read_orders'),
+    rawurlencode(implode(',', $scopes)),
     rawurlencode($callbackUrl)
 );
 

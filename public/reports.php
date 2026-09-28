@@ -4,7 +4,12 @@ declare(strict_types=1);
 $config = require __DIR__ . '/../app/config.php';
 require_once __DIR__ . '/../app/permissions.php';
 
-requirePermission($config, 'reports');
+$me = requirePermission($config, 'reports');
+
+// Sizes at zero become buttons only where a set could actually go through.
+$canSetStock = userCan($me, 'adjust_inventory')
+    && $config['shopify_location_id'] !== ''
+    && $config['shopify_access_token'] !== '';
 
 $pageTitle  = 'Reports - Cent Notes';
 $activePage = 'reports';
@@ -559,6 +564,109 @@ require __DIR__ . '/../app/partials/header.php';
     /* ── Out of Stock ── */
     .oos-sold-out { color: #c0392b; font-weight: 600; }
 
+    /* A size at zero, as a button for a viewer who may set its stock. */
+    .oos-set-btn {
+        padding: .15rem .55rem;
+        margin: .1rem .3rem .1rem 0;
+        font-size: .78rem;
+        font-weight: 600;
+        font-family: inherit;
+        color: #1a1a2e;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: border-color .15s, background .15s;
+    }
+    .oos-set-btn:hover { border-color: #1a1a2e; background: #f7f8fb; }
+    .oos-set-done { color: #166534; font-weight: 600; }
+    .oos-set-note { font-size: .8rem; color: #888; }
+
+    /* ── Set-stock modal ── */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        background: rgba(0,0,0,.55);
+        padding: 8vh 1rem 1rem;
+    }
+    .modal-overlay[hidden] { display: none; }
+    .modal-box {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.3);
+        width: min(420px, 100%);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .modal-header h2 { font-size: 1rem; font-weight: 700; }
+    .modal-close {
+        border: none;
+        background: transparent;
+        font-size: 1.4rem;
+        color: #9ca3af;
+        cursor: pointer;
+        padding: 0 .25rem;
+        line-height: 1;
+    }
+    .modal-close:hover { color: #1a1a2e; }
+    .modal-body { padding: 1.25rem; }
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: .5rem;
+        padding: 1rem 1.25rem;
+        border-top: 1px solid #f0f0f0;
+        background: #fafbfc;
+    }
+    .oos-set-product { font-size: .9rem; font-weight: 600; color: #1a1a2e; margin-bottom: .35rem; }
+    .oos-set-hint { font-size: .8rem; color: #666; line-height: 1.5; margin-bottom: 1rem; }
+    .oos-set-body label {
+        display: block;
+        font-size: .78rem;
+        font-weight: 600;
+        color: #555;
+        margin-bottom: .35rem;
+    }
+    .oos-set-body input[type="number"] {
+        width: 6rem;
+        padding: .5rem .7rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: .88rem;
+        font-family: inherit;
+        color: #1a1a2e;
+    }
+    .oos-set-body input[type="number"]:focus {
+        outline: none;
+        border-color: #1a1a2e;
+        box-shadow: 0 0 0 3px rgba(26,26,46,.08);
+    }
+    .oos-set-body .lookup-error { margin-top: .9rem; }
+    .btn-cancel {
+        padding: .5rem 1.1rem;
+        background: transparent;
+        color: #555;
+        border: 1px solid #d1d5db;
+        border-radius: 7px;
+        font-size: .82rem;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+    }
+    .btn-cancel:hover { background: #f0f0f5; border-color: #c8d0e0; }
+
 </style>
 
 <div class="reports-wrap">
@@ -1055,6 +1163,9 @@ require __DIR__ . '/../app/partials/header.php';
                 <div class="results-area" id="oos-results">
                     <div class="tc-results-header">
                         <span class="tc-results-count" id="oos-count"></span>
+                        <?php if ($canSetStock): ?>
+                            <span class="oos-set-note">Click a size to set its stock in Shopify.</span>
+                        <?php endif; ?>
                     </div>
                     <div class="tc-table-wrap">
                         <table class="tc-table">
@@ -1075,6 +1186,31 @@ require __DIR__ . '/../app/partials/header.php';
 
     </div><!-- /accordion -->
 </div>
+
+<?php if ($canSetStock): ?>
+<!-- ── Set-stock modal (Out of Stock) ─────────────────────────────────── -->
+<div id="oos-set-modal" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="oos-set-title">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2 id="oos-set-title">Set stock in Shopify</h2>
+            <button type="button" class="modal-close" id="oos-set-close" aria-label="Close">&times;</button>
+        </div>
+        <form id="oos-set-form" autocomplete="off">
+            <div class="modal-body oos-set-body">
+                <p class="oos-set-product" id="oos-set-product"></p>
+                <p class="oos-set-hint" id="oos-set-hint"></p>
+                <label for="oos-set-qty">How many you have now</label>
+                <input type="number" id="oos-set-qty" min="1" max="999" step="1" required>
+                <div class="lookup-error" id="oos-set-error"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" id="oos-set-cancel">Cancel</button>
+                <button type="submit" class="tc-load-btn" id="oos-set-submit">Set in Shopify</button>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
 
 <script>
 (function () {
@@ -1841,8 +1977,12 @@ require __DIR__ . '/../app/partials/header.php';
     const countEl   = document.getElementById('oos-count');
     const rowsEl    = document.getElementById('oos-rows');
 
+    const CAN_SET_STOCK = <?= json_encode($canSetStock) ?>;
+
     // The whole list is fetched once; the size and sold-out filters narrow it here.
     let products = null;
+
+    function sizeKey(v) { return v.size === null ? Infinity : v.size; }
 
     function fmtInt(n) { return Number(n).toLocaleString(); }
 
@@ -1861,6 +2001,11 @@ require __DIR__ . '/../app/partials/header.php';
                 loadingEl.classList.remove('visible');
                 loadBtn.disabled = false;
                 products = data.products || [];
+                products.forEach(function (p) {
+                    // Sets made since this load, shown in the row until the next one.
+                    p.set = [];
+                    p.out.sort(function (a, b) { return (sizeKey(a) > sizeKey(b)) - (sizeKey(a) < sizeKey(b)); });
+                });
                 fillSizes();
                 render();
             })
@@ -1890,9 +2035,10 @@ require __DIR__ . '/../app/partials/header.php';
         const list = products.filter(function (p) {
             return (!soldOutEl.checked || p.sold_out) && (size === null || p.sizes.indexOf(size) !== -1);
         });
-        const soldOut = list.filter(function (p) { return p.sold_out; }).length;
+        const soldOut  = list.filter(function (p) { return p.sold_out; }).length;
+        const stillOut = list.filter(function (p) { return p.out.length > 0; }).length;
 
-        countEl.textContent = fmtInt(list.length) + ' product' + (list.length === 1 ? '' : 's') +
+        countEl.textContent = fmtInt(stillOut) + ' product' + (stillOut === 1 ? '' : 's') +
             ' · ' + fmtInt(soldOut) + ' sold out';
 
         if (list.length === 0) {
@@ -1902,19 +2048,35 @@ require __DIR__ . '/../app/partials/header.php';
         } else {
             let html = '';
             list.forEach(function (p) {
-                const sizes = p.sizes.map(function (s) { return s + 'ml'; }).join(', ');
-                const out   = p.sold_out
-                    ? '<span class="oos-sold-out">Sold out</span>' + (sizes ? ' · ' + sizes : '')
-                    : sizes;
                 html += '<tr>' +
                     '<td>' + escHtml(p.title) + '</td>' +
                     '<td>' + escHtml(p.brand) + '</td>' +
-                    '<td>' + out + '</td>' +
+                    '<td>' + (CAN_SET_STOCK ? outButtons(p) : outText(p)) + '</td>' +
                     '</tr>';
             });
             rowsEl.innerHTML = html;
         }
         resultsEl.classList.add('visible');
+    }
+
+    function outText(p) {
+        const sizes = p.sizes.map(function (s) { return s + 'ml'; }).join(', ');
+        return p.sold_out
+            ? '<span class="oos-sold-out">Sold out</span>' + (sizes ? ' · ' + sizes : '')
+            : sizes;
+    }
+
+    // Each variant at zero is its own button, so a set names exactly one.
+    function outButtons(p) {
+        const parts = [];
+        if (p.sold_out) parts.push('<span class="oos-sold-out">Sold out</span>');
+        p.out.forEach(function (v) {
+            parts.push('<button type="button" class="oos-set-btn" data-product="' + p.id +
+                '" data-variant="' + escHtml(v.variant_id) + '">' +
+                (v.size !== null ? v.size + 'ml' : 'Set stock') + '</button>');
+        });
+        p.set.forEach(function (s) { parts.push('<span class="oos-set-done">' + escHtml(s) + '</span>'); });
+        return parts.join(' ');
     }
 
     function refilter() {
@@ -1924,6 +2086,113 @@ require __DIR__ . '/../app/partials/header.php';
     sizeEl.addEventListener('change', refilter);
     soldOutEl.addEventListener('change', refilter);
     loadBtn.addEventListener('click', load);
+
+    if (!CAN_SET_STOCK) return;
+
+    // ── Set stock ───────────────────────────────────────────────────────────
+
+    const setModal   = document.getElementById('oos-set-modal');
+    const setForm    = document.getElementById('oos-set-form');
+    const setProduct = document.getElementById('oos-set-product');
+    const setHint    = document.getElementById('oos-set-hint');
+    const setQty     = document.getElementById('oos-set-qty');
+    const setError   = document.getElementById('oos-set-error');
+    const setSubmit  = document.getElementById('oos-set-submit');
+
+    let setting  = null;    // {product, variant} the modal is open for
+    let inFlight = false;   // the modal stays open until Shopify has answered
+
+    function openSet(p, v) {
+        setting = { product: p, variant: v };
+        setProduct.textContent = p.title + ' · ' + (v.size !== null ? v.size + 'ml' : 'no size');
+        setHint.textContent = 'Shopify shows ' + v.quantity + '.  Enter how many you have now.  ' +
+            'If Shopify\'s count has changed since this report loaded, it will refuse and nothing changes.';
+        setQty.value = '';
+        setError.textContent = '';
+        setError.classList.remove('visible');
+        setSubmit.disabled = false;
+        setSubmit.textContent = 'Set in Shopify';
+        setModal.hidden = false;
+        setQty.focus();
+    }
+
+    function closeSet() {
+        if (inFlight) return;
+        setModal.hidden = true;
+        setting = null;
+    }
+
+    function showSetError(msg) {
+        setError.textContent = msg;
+        setError.classList.add('visible');
+        setSubmit.disabled = false;
+        setSubmit.textContent = 'Set in Shopify';
+    }
+
+    rowsEl.addEventListener('click', function (e) {
+        const btn = e.target.closest('.oos-set-btn');
+        if (!btn) return;
+        const p = products.find(function (x) { return String(x.id) === btn.dataset.product; });
+        const v = p && p.out.find(function (x) { return x.variant_id === btn.dataset.variant; });
+        if (v) openSet(p, v);
+    });
+
+    setForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!setting || inFlight) return;
+
+        const n = Number(setQty.value);
+        if (!Number.isInteger(n) || n < 1 || n > 999) {
+            showSetError('Enter a whole number from 1 to 999.');
+            return;
+        }
+
+        const p  = setting.product;
+        const v  = setting.variant;
+        const fd = new FormData();
+        fd.append('product_id', p.id);
+        fd.append('variant_id', v.variant_id);
+        fd.append('expected', v.quantity);
+        fd.append('quantity', n);
+
+        inFlight = true;
+        setSubmit.disabled = true;
+        setSubmit.textContent = 'Setting…';
+        setError.classList.remove('visible');
+
+        fetch(apiUrl('inventory-set.php'), {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': CSRF_TOKEN },
+            body: fd,
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                inFlight = false;
+                if (!d.ok) {
+                    showSetError(d.error || 'Shopify did not set the stock.');
+                    return;
+                }
+                p.out = p.out.filter(function (x) { return x !== v; });
+                if (v.size !== null && !p.out.some(function (x) { return x.size === v.size; })) {
+                    p.sizes = p.sizes.filter(function (s) { return s !== v.size; });
+                }
+                p.sold_out = false;
+                p.set.push((v.size !== null ? v.size + 'ml' : 'Stock') + ' set to ' + d.quantity);
+                closeSet();
+                render();
+            })
+            .catch(function () {
+                inFlight = false;
+                showSetError('The request failed.  Try again — if the first try did land, Shopify will refuse the repeat.');
+            });
+    });
+
+    document.getElementById('oos-set-close').addEventListener('click', closeSet);
+    document.getElementById('oos-set-cancel').addEventListener('click', closeSet);
+    setModal.addEventListener('click', function (e) { if (e.target === setModal) closeSet(); });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !setModal.hidden) closeSet();
+    });
 }());
 </script>
 

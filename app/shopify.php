@@ -2,14 +2,15 @@
 declare(strict_types=1);
 
 /**
- * Shared Shopify Admin API HTTP helpers for CLI sync scripts.
+ * Shared Shopify Admin API HTTP helpers.
  *
  * Provides rate-limited GET requests, automatic 429 retry with exponential
  * backoff, cursor-based pagination link parsing, and per-product brand
- * metafield fetching.
+ * metafield fetching, all for the CLI sync scripts — shopifyGetWithRetry()
+ * echoes its progress, so they do not belong in a web request handler.
  *
- * NOT intended for use in web request handlers — relies on $http_response_header
- * which is populated by file_get_contents() and is only reliable in CLI contexts.
+ * shopifyGraphql() is the exception: it writes nothing, and the Out of Stock
+ * report's stock setting calls it from a request.
  */
 
 /**
@@ -175,4 +176,49 @@ function fetchProductBrand(
     $value             = $data['metafields'][0]['value'] ?? null;
     $cache[$productId] = ($value !== null && $value !== '') ? (string) $value : null;
     return $cache[$productId];
+}
+
+/**
+ * POST one GraphQL request to the Admin API and decode the answer.
+ *
+ * Shopify reports throttling, access errors and a mutation's userErrors inside
+ * a 200 body, so a caller reads `errors` and `userErrors` itself.  `body` is null
+ * only when there is no JSON to read: status 0 is a request that never got an
+ * HTTP answer at all.
+ *
+ * @param array<string, mixed> $variables
+ * @return array{status: int, body: ?array}
+ */
+function shopifyGraphql(
+    string $shopDomain,
+    string $accessToken,
+    string $apiVersion,
+    string $query,
+    array $variables
+): array {
+    $payload = json_encode(['query' => $query, 'variables' => $variables], JSON_THROW_ON_ERROR);
+    $context = stream_context_create([
+        'http' => [
+            'method'        => 'POST',
+            'header'        => implode("\r\n", [
+                'X-Shopify-Access-Token: ' . $accessToken,
+                'Content-Type: application/json',
+                'Accept: application/json',
+            ]),
+            'content'       => $payload,
+            'timeout'       => 15,
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $url  = sprintf('https://%s/admin/api/%s/graphql.json', $shopDomain, rawurlencode($apiVersion));
+    $body = @file_get_contents($url, false, $context);
+    if ($body === false) {
+        return ['status' => 0, 'body' => null];
+    }
+
+    preg_match('#HTTP/\S+\s+(\d{3})#', $http_response_header[0] ?? '', $m);
+    $decoded = json_decode($body, associative: true);
+
+    return ['status' => (int) ($m[1] ?? 0), 'body' => is_array($decoded) ? $decoded : null];
 }

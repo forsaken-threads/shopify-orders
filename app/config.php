@@ -13,6 +13,8 @@ declare(strict_types=1);
  * SHOPIFY_API_SECRET      API secret for your Shopify app (used for OAuth token acquisition).
  * SHOPIFY_SHOP_DOMAIN     Your store domain, e.g. your-store.myshopify.com.
  * SHOPIFY_API_VERSION     Pinned Admin API version, e.g. 2025-01.
+ * SHOPIFY_LOCATION_ID     Numeric id of the one Shopify location whose stock the
+ *                         Out of Stock report may set.
  * AUTH_USER               Seed username for the first user, read once by
  *                         scripts/migrate.php into the users table.  After the
  *                         seed runs, auth is database-backed and this value is
@@ -100,6 +102,7 @@ return [
     'shopify_api_secret'     => (string) (getenv('SHOPIFY_API_SECRET')     ?: ''),
     'shopify_shop_domain'    => (string) (getenv('SHOPIFY_SHOP_DOMAIN')    ?: ''),
     'shopify_api_version'    => (string) (getenv('SHOPIFY_API_VERSION')    ?: '2025-01'),
+    'shopify_location_id'    => (string) (getenv('SHOPIFY_LOCATION_ID')    ?: ''),
     'shopify_access_token'   => $shopifyAccessToken,
     'shopify_ini_path'       => $shopifyIniPath,
     // Environment name; when not "production" it is displayed in the header
