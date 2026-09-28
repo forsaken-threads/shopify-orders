@@ -197,7 +197,8 @@ require __DIR__ . '/../app/partials/header.php';
         margin-bottom: .3rem;
     }
 
-    .pc-field-group input[type="text"] {
+    .pc-field-group input[type="text"],
+    .pc-field-group input[type="number"] {
         width: 100%;
         padding: .5rem .65rem;
         font-size: .88rem;
@@ -209,7 +210,10 @@ require __DIR__ . '/../app/partials/header.php';
         transition: border-color .15s, box-shadow .15s;
     }
 
-    .pc-field-group input[type="text"]:focus {
+    .pc-field-group input[type="number"] { width: 5rem; }
+
+    .pc-field-group input[type="text"]:focus,
+    .pc-field-group input[type="number"]:focus {
         border-color: #1a1a2e;
         box-shadow: 0 0 0 3px rgba(26,26,46,.08);
     }
@@ -357,6 +361,10 @@ require __DIR__ . '/../app/partials/header.php';
                         <label for="pc-ml-10">10ml</label>
                     </div>
                 </div>
+                <div class="pc-field-group">
+                    <label for="pc-copies">Copies</label>
+                    <input type="number" id="pc-copies" min="1" max="20" step="1" value="1">
+                </div>
                 <div class="print-card-footer">
                     <label class="pc-skip-label">
                         <input type="checkbox" id="pc-skip-persist">
@@ -386,6 +394,7 @@ require __DIR__ . '/../app/partials/header.php';
     var form        = document.getElementById('pc-form');
     var titleInput  = document.getElementById('pc-title');
     var brandInput  = document.getElementById('pc-brand');
+    var copiesInput = document.getElementById('pc-copies');
     var skipPersist = document.getElementById('pc-skip-persist');
     var errorEl     = document.getElementById('pc-error');
     var printBtn    = document.getElementById('pc-print-btn');
@@ -502,6 +511,7 @@ require __DIR__ . '/../app/partials/header.php';
         brandInput.value = p.preferred_brand != null ? p.preferred_brand : (p.custom_brand || '');
 
         document.getElementById('pc-ml-1').checked = true;
+        copiesInput.value = '1';
         skipPersist.checked = false;
         errorEl.textContent = '';
         resetPrintButton();
@@ -524,7 +534,20 @@ require __DIR__ . '/../app/partials/header.php';
         printBtn.classList.remove('pc-ok', 'pc-fail');
     }
 
+    // Same ceiling as the Bundles print modal's Copies field: a mistyped 200
+    // would otherwise hold the printer for every label of it.
+    function copiesValue() {
+        var n = parseInt(copiesInput.value, 10);
+        if (!Number.isFinite(n) || n < 1) n = 1;
+        if (n > 20) n = 20;
+        return n;
+    }
+
     cardClose.addEventListener('click', clearSelection);
+
+    copiesInput.addEventListener('change', function () {
+        copiesInput.value = copiesValue();
+    });
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -535,7 +558,9 @@ require __DIR__ . '/../app/partials/header.php';
         printBtn.classList.remove('pc-ok', 'pc-fail');
         errorEl.textContent = '';
 
-        var ml = form.querySelector('input[name="pc-ml"]:checked').value;
+        var ml     = form.querySelector('input[name="pc-ml"]:checked').value;
+        var copies = copiesValue();
+        copiesInput.value = copies;
 
         var formData = new FormData();
         formData.append('action', 'product');
@@ -548,7 +573,7 @@ require __DIR__ . '/../app/partials/header.php';
         formData.append('items[0][shopify_product_id]', selected.shopify_product_id);
         formData.append('items[0][preferred_title]', selected.preferred_title != null ? selected.preferred_title : '');
         formData.append('items[0][preferred_brand]', selected.preferred_brand != null ? selected.preferred_brand : '');
-        formData.append('items[0][quantity]', '1');
+        formData.append('items[0][quantity]', String(copies));
         if (skipPersist.checked) {
             formData.append('skip_persist', '1');
         }
