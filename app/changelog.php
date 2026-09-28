@@ -18,6 +18,17 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.29.0',
+        'date'    => '2026-09-28',
+        'title'   => 'Restock a size in Shopify from the Out of Stock report',
+        'notes'   => [
+            'In the Out of Stock report, each size at zero is now a button.  Click it, enter how many you have now, and press Set in Shopify: Shopify\'s stock for that size is set to your number, without going to Shopify.',
+            'After it is set, the row shows the new count in green, such as 10ml set to 12.',
+            'If the stock was changed in Shopify after you loaded the report, Shopify refuses and nothing changes.  Click Load to see the latest before trying again.',
+            'Deploy: visit /install.php as root and approve the new inventory permission in Shopify, then add SHOPIFY_LOCATION_ID to env.ini.  Until both are done the report works as before.',
+        ],
+    ],
+    [
         'version' => '1.28.0',
         'date'    => '2026-09-28',
         'title'   => 'Print several copies of a product label at once',
