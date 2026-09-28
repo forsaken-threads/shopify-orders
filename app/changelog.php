@@ -18,6 +18,16 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.28.0',
+        'date'    => '2026-09-28',
+        'title'   => 'Print several copies of a product label at once',
+        'notes'   => [
+            'When you look up a product on the Products page to print its label, there is now a Copies box under Size.  Set it to the number of labels you want and press Print once.',
+            'Copies starts at 1 each time you pick a product, and can go up to 20.',
+            'If you print again without picking a different product, the same number of copies prints again.',
+        ],
+    ],
+    [
         'version' => '1.27.0',
         'date'    => '2026-09-25',
         'title'   => 'See which products are out of stock',
