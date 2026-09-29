@@ -83,14 +83,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($weekDate === '') {
                 $error = 'Missing week.';
             } else {
-                // Idempotent via UNIQUE(user_id, week_start_date).  IGNORE
-                // is safer than checking-then-inserting under a race.
-                $db->prepare(
-                    "INSERT OR IGNORE INTO timecard_approvals
-                       (user_id, week_start_date, approved_by, approved_at)
-                       VALUES (?, ?, ?, datetime('now'))"
-                )->execute([(int) $target['id'], $weekDate, (int) $me['id']]);
-                $notice = 'Week approved.';
+                // clock.php refuses a clock-out in an approved week and the
+                // punch editor refuses to touch one, so approving over an
+                // open shift leaves nobody able to close it.
+                $wStartUtc = (new DateTimeImmutable($weekDate . ' 00:00:00', $tz))
+                    ->setTimezone(new DateTimeZone('UTC'));
+                $wEndUtc   = $wStartUtc->modify('+7 days');
+                $stmt = $db->prepare(
+                    "SELECT clock_in FROM time_punches
+                     WHERE user_id = ? AND clock_out IS NULL AND clock_in >= ? AND clock_in < ?
+                     LIMIT 1"
+                );
+                $stmt->execute([
+                    (int) $target['id'],
+                    $wStartUtc->format('Y-m-d H:i:s'),
+                    $wEndUtc->format('Y-m-d H:i:s'),
+                ]);
+                $openIn = $stmt->fetchColumn();
+
+                if ($openIn !== false) {
+                    $who   = trim((string) $target['name']) !== '' ? (string) $target['name'] : (string) $target['username'];
+                    $since = (new DateTimeImmutable((string) $openIn))->setTimezone($tz)->format('D, M j \a\t g:i A');
+                    $error = "Can't approve — {$who} is still clocked in from {$since}.  Close that shift first: use its Edit button to set a clock-out time.";
+                } else {
+                    // Idempotent via UNIQUE(user_id, week_start_date).  IGNORE
+                    // is safer than checking-then-inserting under a race.
+                    $db->prepare(
+                        "INSERT OR IGNORE INTO timecard_approvals
+                           (user_id, week_start_date, approved_by, approved_at)
+                           VALUES (?, ?, ?, datetime('now'))"
+                    )->execute([(int) $target['id'], $weekDate, (int) $me['id']]);
+                    $notice = 'Week approved.';
+                }
             }
         } elseif ($action === 'unapprove') {
             $weekDate = (string) ($_POST['week_start_date'] ?? '');
@@ -154,20 +178,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $wEndUtc->format('Y-m-d H:i:s'),
                         ]);
                         $weekPunches = $stmtP->fetchAll();
-                        $minutes = totalMinutes($weekPunches, $nowUtc);
-                        $amount  = round($minutes / 60.0 * (float) $rate['hourly_rate'], 2);
 
-                        $db->prepare(
-                            "UPDATE timecard_approvals
-                                SET paid_at = datetime('now'), paid_by = ?, amount_paid = ?
-                              WHERE user_id = ? AND week_start_date = ?"
-                        )->execute([
-                            (int) $me['id'],
-                            $amount,
-                            (int) $target['id'],
-                            $weekDate,
-                        ]);
-                        $notice = 'Marked paid.';
+                        // Only a week approved before approve refused open
+                        // shifts can reach this.  Paying it would make the
+                        // week terminal with the shift still running.
+                        $openIn = null;
+                        foreach ($weekPunches as $wp) {
+                            if ($wp['clock_out'] === null) {
+                                $openIn = (string) $wp['clock_in'];
+                                break;
+                            }
+                        }
+
+                        if ($openIn !== null) {
+                            $who   = trim((string) $target['name']) !== '' ? (string) $target['name'] : (string) $target['username'];
+                            $since = (new DateTimeImmutable($openIn))->setTimezone($tz)->format('D, M j \a\t g:i A');
+                            $error = "Can't mark paid — {$who} is still clocked in from {$since}.  Re-open the week, use that shift's Edit button to set a clock-out time, then approve the week again.";
+                        } else {
+                            $minutes = totalMinutes($weekPunches, $nowUtc);
+                            $amount  = round($minutes / 60.0 * (float) $rate['hourly_rate'], 2);
+
+                            $db->prepare(
+                                "UPDATE timecard_approvals
+                                    SET paid_at = datetime('now'), paid_by = ?, amount_paid = ?
+                                  WHERE user_id = ? AND week_start_date = ?"
+                            )->execute([
+                                (int) $me['id'],
+                                $amount,
+                                (int) $target['id'],
+                                $weekDate,
+                            ]);
+                            $notice = 'Marked paid.';
+                        }
                     }
                 }
             }
@@ -315,6 +357,7 @@ $weekTotal        = 0;
 $targetPaidHourly = false;
 $weekRate         = null;       // hourly_rates row covering this week (or null)
 $weekAmount       = null;       // computed week pay (float) when rate available
+$hasOpenPunch     = false;
 
 if ($selectedUser > 0) {
     foreach ($pickableUsers as $u) {
@@ -339,6 +382,12 @@ if ($target !== null) {
     ]);
     $punches   = $stmt->fetchAll();
     $weekTotal = totalMinutes($punches, $nowUtc);
+    foreach ($punches as $p) {
+        if ($p['clock_out'] === null) {
+            $hasOpenPunch = true;
+            break;
+        }
+    }
 
     $stmt = $db->prepare(
         "SELECT a.approved_at, a.approved_by, a.paid_at, a.paid_by, a.amount_paid,
@@ -579,7 +628,8 @@ require __DIR__ . '/../app/partials/header.php';
         cursor: pointer;
     }
 
-    .btn-primary:hover { background: #2d2d5e; }
+    .btn-primary:hover:not(:disabled) { background: #2d2d5e; }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
 
     .btn-danger {
         padding: .5rem 1.1rem;
@@ -841,7 +891,7 @@ require __DIR__ . '/../app/partials/header.php';
                             <?= $hiddens() ?>
                             <input type="hidden" name="action" value="mark_paid">
                             <button type="submit" class="btn-primary"
-                                    <?php if ($weekRate === null): ?>disabled title="No rate on file for this pay week"<?php endif; ?>
+                                    <?php if ($weekRate === null): ?>disabled title="No rate on file for this pay week"<?php elseif ($hasOpenPunch): ?>disabled title="A shift in this week is still open.  Re-open the week and set its clock-out first."<?php endif; ?>
                                     data-confirm="Mark this week paid for $<?= $weekAmount !== null ? h(number_format((float) $weekAmount, 2)) : '0.00' ?>?  This locks the week permanently.">
                                 Mark paid
                             </button>
@@ -851,6 +901,7 @@ require __DIR__ . '/../app/partials/header.php';
                         <?= $hiddens() ?>
                         <input type="hidden" name="action" value="<?= $isApproved ? 'unapprove' : 'approve' ?>">
                         <button type="submit" class="<?= $isApproved ? 'btn-cancel' : 'btn-primary' ?>"
+                                <?php if (!$isApproved && $hasOpenPunch): ?>disabled title="A shift in this week is still open.  Set its clock-out first."<?php endif; ?>
                                 data-confirm="<?= $isApproved
                                     ? 'Re-open this week for editing?'
                                     : 'Approve this week and lock it from further edits?' ?>">
