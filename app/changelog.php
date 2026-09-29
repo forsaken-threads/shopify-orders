@@ -18,6 +18,17 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.30.0',
+        'date'    => '2026-09-28',
+        'title'   => 'Time cards: no approving or paying a week while someone is still clocked in',
+        'notes'   => [
+            'On the Time cards page, Approve week is greyed out while a shift in that week has no clock-out yet.  Point at the button to see why.',
+            'Set the clock-out first with that shift\'s Edit button, and Approve week works again.  This stops an approved week from locking someone out of clocking out.',
+            'Mark paid is greyed out the same way for a week that was approved with a shift still open.  Re-open the week, set the clock-out, and approve it again before paying.',
+            'Greyed-out buttons on this page now look greyed out, including Mark paid when no hourly rate is on file.',
+        ],
+    ],
+    [
         'version' => '1.29.0',
         'date'    => '2026-09-28',
         'title'   => 'Restock a size in Shopify from the Out of Stock report',
