@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.31.0',
+        'date'    => '2026-10-08',
+        'title'   => 'Emails when a customer disputes a charge',
+        'notes'   => [
+            'Cent Notes now sends an email when a customer disputes a Shopify Payments charge with their bank, whether it starts as an inquiry or a chargeback.',
+            'While Shopify is waiting for your evidence, the email is marked ACTION REQUIRED, shows the deadline and how many days are left, and is sent again every morning until you respond.',
+            'You also get a plain email when a dispute changes: evidence under review, won, or lost.',
+            'Each email links to the order in Shopify and in Cent Notes.  Disputes on PayPal orders are handled by PayPal and are not included.',
+            'Deploy: run php scripts/migrate.php, add DISPUTE_ALERT_TO to env.ini, visit /install.php as root to approve the new disputes permission, then run sudo scripts/publish-artifacts.sh.',
+        ],
+    ],
+    [
         'version' => '1.30.0',
         'date'    => '2026-09-28',
         'title'   => 'Time cards: no approving or paying a week while someone is still clocked in',
