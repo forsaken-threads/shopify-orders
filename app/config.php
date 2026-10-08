@@ -8,9 +8,13 @@ declare(strict_types=1);
  * Copy env.ini.example → env.ini at the project root and fill in values.
  * Never commit env.ini.
  *
- * SHOPIFY_WEBHOOK_SECRET  Shopify-provided secret for verifying X-Shopify-Hmac-Sha256.
+ * SHOPIFY_WEBHOOK_SECRET  Shopify-provided secret for verifying X-Shopify-Hmac-Sha256
+ *                         on the orders and products webhooks, which are registered
+ *                         in the Shopify admin.
  * SHOPIFY_API_KEY         API key for your Shopify app (used for OAuth token acquisition).
  * SHOPIFY_API_SECRET      API secret for your Shopify app (used for OAuth token acquisition).
+ *                         Also signs the disputes webhook, which the app registers
+ *                         itself through the Admin API.
  * SHOPIFY_SHOP_DOMAIN     Your store domain, e.g. your-store.myshopify.com.
  * SHOPIFY_API_VERSION     Pinned Admin API version, e.g. 2025-01.
  * SHOPIFY_LOCATION_ID     Numeric id of the one Shopify location whose stock the
@@ -120,7 +124,7 @@ return [
     'print_target_source'    => $printSshTargetSource,
     'print_route'            => $printRoute,
     'print_route_ini_path'   => $routeIniPath,
-    // ── SMTP (used by app/mailer.php for password-reset emails) ─────────────
+    // ── SMTP (used by app/mailer.php for password-reset and dispute emails) ─
     'smtp_host'              => (string) (getenv('SMTP_HOST')              ?: ''),
     'smtp_port'              => (int)    (getenv('SMTP_PORT')              ?: 587),
     'smtp_username'          => (string) (getenv('SMTP_USERNAME')          ?: ''),
@@ -142,8 +146,16 @@ return [
     'smtp_from_email'        => (string) (getenv('SMTP_FROM_EMAIL')        ?: ''),
     'smtp_from_name'         => (string) (getenv('SMTP_FROM_NAME')         ?: 'Cent Notes'),
     // Absolute base URL of this deployment (no trailing slash).  Used to build
-    // password-reset links in outgoing email, where relative URLs aren't valid.
+    // password-reset links in outgoing email, where relative URLs aren't valid,
+    // and the address Shopify delivers dispute webhooks to.
     'app_base_url'           => rtrim((string) (getenv('APP_BASE_URL')     ?: ''), '/'),
+    // Addresses emailed about Shopify Payments disputes (app/disputes.php),
+    // comma-separated in env.ini.  Left empty, disputes are still recorded and
+    // nobody is told.
+    'dispute_alert_to'       => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) (getenv('DISPUTE_ALERT_TO') ?: ''))
+    ))),
     // Day of week the pay-period week starts.  'sun' (Sunday→Saturday),
     // 'mon' (Monday→Sunday), or 'sat' (Saturday→Friday).  Used by the
     // time-clock pages.  Falls back to 'sun' on any unrecognised value.

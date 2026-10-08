@@ -15,6 +15,9 @@ declare(strict_types=1);
  * Auth is enabled only when smtp_username or smtp_password is non-empty, so
  * an unauthenticated local relay works without bogus credentials.
  *
+ * $urgent marks the message high priority, for the dispute alerts in
+ * app/disputes.php.
+ *
  * Returns true on successful queue, false on transport failure.  The error
  * detail is written to error_log() so callers don't need to surface SMTP
  * internals to end users.
@@ -31,7 +34,8 @@ function sendMail(
     string $toName,
     string $subject,
     string $htmlBody,
-    string $textBody = ''
+    string $textBody = '',
+    bool   $urgent = false
 ): bool {
     $mail = new PHPMailer(true);
 
@@ -80,6 +84,13 @@ function sendMail(
             (string) ($config['smtp_from_name']  ?? '')
         );
         $mail->addAddress($toEmail, $toName);
+
+        if ($urgent) {
+            // Mail clients disagree about which of these they read.
+            $mail->Priority = 1;
+            $mail->addCustomHeader('Importance', 'High');
+            $mail->addCustomHeader('X-MSMail-Priority', 'High');
+        }
 
         $mail->isHTML(true);
         $mail->Subject = $subject;

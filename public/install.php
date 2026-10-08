@@ -33,8 +33,9 @@ $shopDomain = $config['shopify_shop_domain'];
 $apiVersion = $config['shopify_api_version'];
 $iniPath    = $config['shopify_ini_path'];
 
-// write_inventory is for setting stock from the Out of Stock report.
-$scopes = ['read_products', 'read_orders', 'write_inventory'];
+// write_inventory is for setting stock from the Out of Stock report, and
+// read_shopify_payments_disputes for the dispute alerts in app/disputes.php.
+$scopes = ['read_products', 'read_orders', 'write_inventory', 'read_shopify_payments_disputes'];
 
 if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
     http_response_code(500);

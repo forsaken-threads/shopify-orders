@@ -255,11 +255,12 @@ app/
   changelog.php       release notes (paired with each version bump)
   config.php          env.ini → config array
   db.php              getDb()
+  disputes.php        Shopify Payments disputes: recording + alert emails
   permissions.php     ROLES, PERMISSIONS_BY_ROLE, gates
   password-reset.php  reset-email generation + token consumption
   timeclock.php       pay-week helpers, rate lookup, snap helpers
   shopify.php         Shopify admin API client
-  webhook.php         order/product webhook handlers
+  webhook.php         HMAC check + log line shared by the webhook receivers
   mailer.php          PHPMailer wrapper
   partials/
     header.php        <head>, navbar, search modal, release modal
@@ -274,6 +275,7 @@ scripts/
   add-user.php        interactive user-creation CLI
   sync-products.php   refresh local product cache from Shopify
   sync-paid-orders.php  backfill paid orders missed by webhook
+  sync-disputes.php   re-check disputes, send owed alerts and reminders
   publish-artifacts.sh  install cron / logrotate / vhost on carmarthen
 .deployment/          local-development image only — not production
 .local-development/   docker-compose.yml + .env.defaults for ./do

@@ -488,4 +488,35 @@ try {
     // Column already exists — nothing to do.
 }
 
+// ── Disputes ─────────────────────────────────────────────────────────────────
+//
+// One row per Shopify Payments dispute, an inquiry or a chargeback, written by
+// the disputes webhook and by scripts/sync-disputes.php from the same Dispute
+// resource.  initiated_at and evidence_due_by are converted to UTC on the way
+// in, unlike the two shopify_created_at columns.
+//
+// alerted_state is the 'type:status' the last alert email reported, and
+// alerted_at is when that email went.  app/disputes.php compares them with the
+// row to decide whether another email is owed, so a failed send needs no
+// queue: the row still reads as owed.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS disputes (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        shopify_dispute_id TEXT    NOT NULL UNIQUE,
+        shopify_order_id   TEXT,
+        type               TEXT    NOT NULL,
+        status             TEXT    NOT NULL,
+        reason             TEXT,
+        amount             REAL    NOT NULL DEFAULT 0.0,
+        currency           TEXT    NOT NULL DEFAULT 'USD',
+        initiated_at       TEXT,
+        evidence_due_by    TEXT,
+        raw_data           TEXT    NOT NULL,
+        alerted_state      TEXT,
+        alerted_at         TEXT,
+        created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+SQL);
+
 echo "Migration complete.\n";

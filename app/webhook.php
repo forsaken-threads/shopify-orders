@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Shared Shopify webhook helpers.
  *
  * Provides HMAC-SHA256 signature verification and structured log appending.
- * Required by both public/webhooks/orders.php and public/webhooks/products.php.
+ * Required by every endpoint in public/webhooks/.
  */
 
 /**
