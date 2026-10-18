@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.32.0',
+        'date'    => '2026-10-18',
+        'title'   => 'Mark the days and times you can\'t work',
+        'notes'   => [
+            'There is a new Availability page in the menu for everyone.  Use it to mark the days or times you can\'t work: one day, a run of days, or every week on the days you choose.',
+            'Each entry can be all day or between two times, with an optional note.  Click an entry to change or delete it.',
+            'Admins see everybody\'s entries on one calendar, one colour per person, and can use Show to see just one person.  Admins can add and change entries for anyone shown there.',
+            'On a phone, the month is shown as a list of the days that have something marked.',
+            'Deploy: run php scripts/migrate.php.',
+        ],
+    ],
+    [
         'version' => '1.31.0',
         'date'    => '2026-10-08',
         'title'   => 'Emails when a customer disputes a charge',
