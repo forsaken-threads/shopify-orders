@@ -45,10 +45,10 @@ const ROLE_RANK = [
 ];
 
 const PERMISSIONS_BY_ROLE = [
-    'basic_employee' => ['clock_in_out'],
-    'data_entry'     => ['clock_in_out', 'orders', 'bundles'],
-    'admin'          => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'adjust_inventory'],
-    'root'           => ['clock_in_out', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'adjust_inventory', 'shopify_install', 'masquerade', 'tools'],
+    'basic_employee' => ['clock_in_out', 'availability'],
+    'data_entry'     => ['clock_in_out', 'availability', 'orders', 'bundles'],
+    'admin'          => ['clock_in_out', 'availability', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'manage_availability', 'adjust_inventory'],
+    'root'           => ['clock_in_out', 'availability', 'orders', 'bundles', 'reports', 'charts', 'manage_users', 'manage_timecards', 'manage_availability', 'adjust_inventory', 'shopify_install', 'masquerade', 'tools'],
 ];
 
 /**

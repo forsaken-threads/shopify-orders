@@ -519,4 +519,35 @@ $pdo->exec(<<<'SQL'
     );
 SQL);
 
+// ── Unavailability ───────────────────────────────────────────────────────────
+//
+// One row per stretch of time an employee has said they cannot work, managed
+// on /availability.php.  repeat_days NULL is a one-off span from start_date to
+// end_date inclusive; otherwise it is the weekdays the entry repeats on, as
+// PHP 'w' digits comma-joined ('0,2' is Sunday and Tuesday), from start_date
+// until end_date, or with no end when end_date is NULL.  start_time and
+// end_time are both NULL for all day, else 'HH:MM' on each day it covers.
+//
+// Dates and times are local wall-clock text in the display timezone rather
+// than UTC instants: "Tuesdays 9 to 1" has to stay 9 to 1 across a DST change,
+// which a stored UTC time would not.
+
+$pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS unavailability (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        start_date  TEXT    NOT NULL,
+        end_date    TEXT,
+        repeat_days TEXT,
+        start_time  TEXT,
+        end_time    TEXT,
+        note        TEXT,
+        updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+        updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_unavailability_user ON unavailability(user_id, start_date);
+SQL);
+
 echo "Migration complete.\n";
