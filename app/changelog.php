@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.33.0',
+        'date'    => '2026-10-19',
+        'title'   => 'A weekly schedule in place of Availability',
+        'notes'   => [
+            'The Availability page is gone.  In its place is a new Schedule page, in the menu for everyone.',
+            'Admins set each person\'s regular week at the bottom of the page: the days they work and their hours.  It repeats every week.',
+            'Employees can click one of their own shifts, from today on, to move it to another day in the same pay week (it keeps its hours), take the day off, or put it back.  Every admin with an email address gets an email when they do.',
+            'Admins can click any shift to change its day or times, give the day off, or put it back to regular.',
+            'Everyone can see everyone\'s shifts.  Use Show to see just one person.',
+            'Deploy: run php scripts/migrate.php.',
+        ],
+    ],
+    [
         'version' => '1.32.0',
         'date'    => '2026-10-18',
         'title'   => 'Mark the days and times you can\'t work',
