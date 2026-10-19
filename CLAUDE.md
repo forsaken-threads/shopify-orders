@@ -259,6 +259,7 @@ app/
   permissions.php     ROLES, PERMISSIONS_BY_ROLE, gates
   password-reset.php  reset-email generation + token consumption
   timeclock.php       pay-week helpers, rate lookup, snap helpers
+  schedule.php        regular weeks, day changes, admin change emails
   shopify.php         Shopify admin API client
   webhook.php         HMAC check + log line shared by the webhook receivers
   mailer.php          PHPMailer wrapper

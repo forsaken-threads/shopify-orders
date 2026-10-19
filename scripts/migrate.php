@@ -519,35 +519,60 @@ $pdo->exec(<<<'SQL'
     );
 SQL);
 
-// ── Unavailability ───────────────────────────────────────────────────────────
+// ── Drop unavailability ──────────────────────────────────────────────────────
 //
-// One row per stretch of time an employee has said they cannot work, managed
-// on /availability.php.  repeat_days NULL is a one-off span from start_date to
-// end_date inclusive; otherwise it is the weekdays the entry repeats on, as
-// PHP 'w' digits comma-joined ('0,2' is Sunday and Tuesday), from start_date
-// until end_date, or with no end when end_date is NULL.  start_time and
-// end_time are both NULL for all day, else 'HH:MM' on each day it covers.
+// 1.32.0's Availability page was replaced by the schedule below before anyone
+// used it, so its table goes with it.
+
+$hadUnavailability = (bool) $pdo->query(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'unavailability'"
+)->fetchColumn();
+if ($hadUnavailability) {
+    $pdo->exec('DROP TABLE unavailability');
+    echo "Dropped unavailability table.\n";
+}
+
+// ── Schedule ─────────────────────────────────────────────────────────────────
+//
+// schedule_shifts is each person's regular week, managed on /schedule.php: at
+// most one shift per weekday, weekday as PHP 'w' (0 is Sunday).
+//
+// schedule_changes holds the exceptions, one per regular day that was changed,
+// keyed by that day's date.  new_date NULL means the day is off; otherwise the
+// shift is worked on new_date.  start_time and end_time are NULL to keep the
+// regular times, which is how an employee's move keeps the hours, and so a
+// later change to the regular times reaches a moved day too.  A change whose
+// weekday is no longer in the regular week is ignored rather than deleted.
 //
 // Dates and times are local wall-clock text in the display timezone rather
-// than UTC instants: "Tuesdays 9 to 1" has to stay 9 to 1 across a DST change,
-// which a stored UTC time would not.
+// than UTC instants: a 9 o'clock shift has to stay 9 o'clock across a DST
+// change, which a stored UTC time would not.
 
 $pdo->exec(<<<'SQL'
-    CREATE TABLE IF NOT EXISTS unavailability (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        start_date  TEXT    NOT NULL,
-        end_date    TEXT,
-        repeat_days TEXT,
-        start_time  TEXT,
-        end_time    TEXT,
-        note        TEXT,
-        updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-        updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    CREATE TABLE IF NOT EXISTS schedule_shifts (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        weekday    INTEGER NOT NULL,
+        start_time TEXT    NOT NULL,
+        end_time   TEXT    NOT NULL,
+        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (user_id, weekday)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_unavailability_user ON unavailability(user_id, start_date);
+    CREATE TABLE IF NOT EXISTS schedule_changes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        shift_date TEXT    NOT NULL,
+        new_date   TEXT,
+        start_time TEXT,
+        end_time   TEXT,
+        changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        changed_at TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (user_id, shift_date)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_schedule_changes_new_date ON schedule_changes(user_id, new_date);
 SQL);
 
 echo "Migration complete.\n";
