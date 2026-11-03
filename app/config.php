@@ -130,8 +130,14 @@ return [
     'smtp_username'          => (string) (getenv('SMTP_USERNAME')          ?: ''),
     'smtp_password'          => (string) (getenv('SMTP_PASSWORD')          ?: ''),
     // 'tls' (STARTTLS), 'ssl' (SMTPS), or 'none' (cleartext — only sensible
-    // on a trusted LAN or against a local MTA).
-    'smtp_encryption'        => (string) (getenv('SMTP_ENCRYPTION')        ?: 'tls'),
+    // on a trusted LAN or against a local MTA).  parse_ini_file reads a bare
+    // none as an empty string, so empty passes through as cleartext rather
+    // than falling to the default: a blank value means none, and only
+    // leaving the key out gives tls.
+    'smtp_encryption'        => (static function () {
+        $v = getenv('SMTP_ENCRYPTION');
+        return $v === false ? 'tls' : (string) $v;
+    })(),
     // When false, PHPMailer skips peer verification and accepts self-signed
     // certs — useful for local dev MTAs.  Defaults to true (secure).
     // parse_ini_file's "false" magic-word turns into an empty string in
