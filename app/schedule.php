@@ -10,7 +10,7 @@ declare(strict_types=1);
  *   shift_date  the regular day it belongs to, which is what identifies it
  *   date        the day it is worked: new_date for a moved shift
  *   state       'regular'     worked on its own day at its regular times
- *               'changed'     worked on its own day at times an admin set
+ *               'changed'     worked on its own day at other times
  *               'moved'       worked on another day
  *               'off'         not worked
  *               'moved_away'  the marker scheduleShifts() leaves on the
@@ -163,6 +163,21 @@ function scheduleWorksOn(PDO $db, int $userId, string $date, string $exceptShift
 }
 
 /**
+ * Minutes one person is scheduled to work on the days from $from to $to
+ * inclusive, leaving out the shift whose regular day is $exceptShiftDate.
+ */
+function scheduleWorkedMinutes(PDO $db, int $userId, string $from, string $to, string $exceptShiftDate): int
+{
+    $total = 0;
+    foreach (scheduleShifts($db, [$userId], $from, $to) as $s) {
+        if ($s['shift_date'] !== $exceptShiftDate && in_array($s['state'], SCHEDULE_WORKED, true)) {
+            $total += scheduleMinutes($s['start_time'], $s['end_time']);
+        }
+    }
+    return $total;
+}
+
+/**
  * Record where a regular day's shift is worked, and at what times.  A shift
  * back on its own day at its regular times needs no row, so it has none.
  */
@@ -204,6 +219,34 @@ function scheduleFormatTimes(string $from, string $to): string
 }
 
 /**
+ * Minutes from one 'H:i' to a later one on the same day.  Wall-clock, so a
+ * shift on a DST change day is as long as its times say.
+ */
+function scheduleMinutes(string $from, string $to): int
+{
+    [$fh, $fm] = array_map('intval', explode(':', $from));
+    [$th, $tm] = array_map('intval', explode(':', $to));
+    return ($th * 60 + $tm) - ($fh * 60 + $fm);
+}
+
+/**
+ * '4 hours', '1 hour 30 minutes', '45 minutes'.
+ */
+function scheduleFormatLength(int $minutes): string
+{
+    $h     = intdiv($minutes, 60);
+    $m     = $minutes % 60;
+    $parts = [];
+    if ($h > 0) {
+        $parts[] = $h . ($h === 1 ? ' hour' : ' hours');
+    }
+    if ($m > 0) {
+        $parts[] = $m . ($m === 1 ? ' minute' : ' minutes');
+    }
+    return implode(' ', $parts);
+}
+
+/**
  * Where a shift stands, as a phrase: 'Mon, Oct 20, 9 AM – 1 PM' or 'Off'.
  */
 function scheduleDescribe(array $shift): string
@@ -235,10 +278,16 @@ function scheduleAdminRecipients(PDO $db): array
 function mailScheduleChange(array $config, array $recipients, string $person, array $before, array $after): void
 {
     $day     = scheduleFormatDate($before['shift_date']);
+    $retimed = [$after['start_time'], $after['end_time']] !== [$before['start_time'], $before['end_time']];
     $summary = match (true) {
-        $after['state'] === 'off'                                         => "{$person} took {$day} off",
-        $after['date'] === $after['shift_date']                           => "{$person} put {$day} back",
-        default => "{$person} moved {$day} to " . scheduleFormatDate($after['date']),
+        $after['state'] === 'off'     => "{$person} took {$day} off",
+        $after['state'] === 'regular' => "{$person} put {$day} back",
+        $after['date'] !== $before['date'] || $before['state'] === 'off' =>
+            ($after['date'] === $after['shift_date']
+                ? "{$person} put {$day} back"
+                : "{$person} moved {$day} to " . scheduleFormatDate($after['date']))
+            . ($retimed ? ' and changed its times' : ''),
+        default => "{$person} changed the times of the {$day} shift",
     };
     $rows = [
         'Regular day' => $day . ', ' . scheduleFormatTimes($before['regular_start'], $before['regular_end']),

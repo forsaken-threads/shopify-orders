@@ -5,8 +5,9 @@ declare(strict_types=1);
  * Schedule: everyone's regular week, and the days moved or taken off.
  *
  * Everyone sees everyone's shifts.  An employee changes only their own, from
- * today on: move a day to another day in the same pay week, keeping its times;
- * take it off; or put it back.  Every admin is emailed when they do.
+ * today on: its day, within the same pay week, and its times, so long as the
+ * week stays within the hours their regular week adds up to; take it off; or
+ * put it back to regular.  Every admin is emailed when they do.
  *
  * manage_schedule (admin and root) changes anyone's day and times and sets
  * regular weeks, for people at or below their own rank — the same hierarchy
@@ -104,6 +105,43 @@ if (!isset($scheduled[$showId])) {
     $showId = 0;
 }
 
+// ── Weekly hours: the limit on an employee's own changes ─────────────────────
+
+$usualMinutes = fn (int $uid): int => array_sum(array_map(
+    fn (array $t): int => scheduleMinutes($t['start_time'], $t['end_time']),
+    $regularWeeks[$uid] ?? []
+));
+
+// The pay week a shift belongs to: the minutes on its other shifts, what the
+// regular week adds up to, and the most an employee's change may bring the
+// week to.  That is the regular total, or what is scheduled now if an admin
+// has already put the week over it, so that week can still be rearranged.
+$weekHours = function (array $s) use ($db, $payWeekOf, $usualMinutes): array {
+    [$start, $end] = $payWeekOf($s['shift_date']);
+    $others = scheduleWorkedMinutes($db, $s['user_id'], $start, $end, $s['shift_date']);
+    $mine   = in_array($s['state'], SCHEDULE_WORKED, true) && $s['date'] >= $start && $s['date'] <= $end
+        ? scheduleMinutes($s['start_time'], $s['end_time'])
+        : 0;
+    $usual  = $usualMinutes($s['user_id']);
+    return ['others' => $others, 'usual' => $usual, 'limit' => max($usual, $others + $mine)];
+};
+
+// Why giving the shift $shiftMinutes would put its week over the limit, or
+// null when it would not.  The box says the same as the hours are typed.
+$weekRefusal = function (array $w, int $shiftMinutes, bool $canShortenThis): ?string {
+    $total = $w['others'] + $shiftMinutes;
+    if ($total <= $w['limit']) {
+        return null;
+    }
+    $cap = $w['limit'] > $w['usual']
+        ? 'the ' . scheduleFormatLength($w['limit']) . ' already scheduled'
+        : 'the ' . scheduleFormatLength($w['usual']) . ' you normally work';
+    return 'That would make this week ' . scheduleFormatLength($total) . ', over ' . $cap . '.  '
+        . ($canShortenThis
+            ? 'Shorten this shift by ' . scheduleFormatLength($total - $w['limit']) . ', or shorten another day this week first.'
+            : 'Shorten another day this week first.');
+};
+
 $viewQs = function (string $month, int $show): string {
     $q = ['month' => $month];
     if ($show > 0) {
@@ -170,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $form   = ['userId' => $uid, 'week' => $typed];
             }
         }
-    } elseif (in_array($action, ['move', 'putback', 'off', 'save', 'restore'], true)) {
+    } elseif (in_array($action, ['save', 'off', 'restore'], true)) {
         $shiftDate = $parseDate((string) ($_POST['shift_date'] ?? ''));
         $shift     = ($shiftDate !== null && isset($people[$uid])) ? scheduleShiftFor($db, $uid, $shiftDate) : null;
         $asManager = $canEdit($uid);
@@ -179,10 +217,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($shift === null || (!$asManager && !$asSelf)) {
             $error = 'That shift is no longer on the schedule.';
-        } elseif ($asSelf && !in_array($action, ['move', 'putback', 'off'], true)) {
-            $error = 'Unknown action.';
-        } elseif ($asManager && !in_array($action, ['save', 'off', 'restore'], true)) {
-            $error = 'Unknown action.';
         } elseif ($asSelf && ($block = $selfBlock($shift)) !== null) {
             $error = $block;
         } else {
@@ -190,33 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $day  = scheduleFormatDate($shiftDate);
             [$keepFrom, $keepTo] = $keptTimes($shift);
 
-            if ($action === 'move') {
-                $to = $parseDate((string) ($_POST['to_date'] ?? ''));
-                [$weekStart, $weekEnd] = $payWeekOf($shiftDate);
-                if ($to === null) {
-                    $error = 'Choose a day to move it to.';
-                } elseif ($to < $weekStart || $to > $weekEnd) {
-                    $error = 'A shift can move only to another day in the same pay week.';
-                } elseif ($to < $todayDate) {
-                    $error = 'Choose today or a later day.';
-                } elseif ($shift['state'] !== 'off' && $to === $shift['date']) {
-                    $error = 'It is already on that day.';
-                } elseif (scheduleWorksOn($db, $uid, $to, $shiftDate)) {
-                    $error = 'You already work on ' . scheduleFormatDate($to) . '.';
-                } else {
-                    scheduleSetChange($db, $uid, $shiftDate, $to, $keepFrom, $keepTo, $meId);
-                    $notice = "Moved your {$day} shift to " . scheduleFormatDate($to) . '.';
-                }
-            } elseif ($action === 'putback') {
-                if ($shift['date'] === $shiftDate && $shift['state'] !== 'off') {
-                    $error = 'It is already on its own day.';
-                } elseif (scheduleWorksOn($db, $uid, $shiftDate, $shiftDate)) {
-                    $error = "You already work on {$day}, so this shift can't go back there.";
-                } else {
-                    scheduleSetChange($db, $uid, $shiftDate, $shiftDate, $keepFrom, $keepTo, $meId);
-                    $notice = "Put your {$day} shift back on its own day.";
-                }
-            } elseif ($action === 'off') {
+            if ($action === 'off') {
                 if ($shift['state'] === 'off') {
                     $error = 'That day is already off.';
                 } else {
@@ -227,10 +235,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($shift['state'] === 'regular') {
                     $error = 'That shift is already regular.';
                 } elseif (scheduleWorksOn($db, $uid, $shiftDate, $shiftDate)) {
-                    $error = "{$name} already works on {$day}, so this shift can't go back there.  Move the other one first.";
+                    $error = $asSelf
+                        ? "You already work on {$day}, so this shift can't go back there."
+                        : "{$name} already works on {$day}, so this shift can't go back there.  Move the other one first.";
+                } elseif ($asSelf && ($over = $weekRefusal($weekHours($shift), scheduleMinutes($shift['regular_start'], $shift['regular_end']), false)) !== null) {
+                    $error = $over;
                 } else {
                     scheduleSetChange($db, $uid, $shiftDate, $shiftDate, null, null, $meId);
-                    $notice = "Put {$name}'s {$day} shift back to regular.";
+                    $notice = $asSelf ? "Put your {$day} shift back to regular." : "Put {$name}'s {$day} shift back to regular.";
                 }
             } else {
                 $dateRaw = trim((string) ($_POST['date'] ?? ''));
@@ -239,21 +251,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $date    = $parseDate($dateRaw);
                 $from    = $parseTime($fromRaw);
                 $to      = $parseTime($toRaw);
+                [$weekStart, $weekEnd] = $payWeekOf($shiftDate);
+                $retimed = [$from, $to] !== [$shift['start_time'], $shift['end_time']];
                 if ($date === null) {
                     $error = 'Choose the day it is worked.';
                 } elseif ($from === null || $to === null) {
                     $error = 'Enter a start and an end time.';
                 } elseif ($to <= $from) {
                     $error = 'The end time must be after the start time.';
+                } elseif ($asSelf && ($date < $weekStart || $date > $weekEnd)) {
+                    $error = 'A shift can move only to another day in the same pay week.';
+                } elseif ($asSelf && $date < $todayDate) {
+                    $error = 'Choose today or a later day.';
+                } elseif ($asSelf && !$retimed && $shift['state'] !== 'off' && $date === $shift['date']) {
+                    // Saved as it stands, it would only email the admins about nothing.
+                    $error = 'Nothing has changed.  Choose another day or other times.';
+                } elseif ($asSelf && ($over = $weekRefusal($weekHours($shift), scheduleMinutes($from, $to), true)) !== null) {
+                    $error = $over;
                 } elseif (scheduleWorksOn($db, $uid, $date, $shiftDate)) {
-                    $error = "{$name} already works on " . scheduleFormatDate($date) . '.';
+                    $error = ($asSelf ? 'You already work on ' : "{$name} already works on ") . scheduleFormatDate($date) . '.';
                 } else {
                     $regular = $from === $shift['regular_start'] && $to === $shift['regular_end'];
                     scheduleSetChange($db, $uid, $shiftDate, $date, $regular ? null : $from, $regular ? null : $to, $meId);
-                    $notice = "Saved {$name}'s {$day} shift: " . scheduleDescribe(scheduleShiftFor($db, $uid, $shiftDate)) . '.';
+                    $saved  = scheduleDescribe(scheduleShiftFor($db, $uid, $shiftDate));
+                    $notice = $asSelf ? "Saved your {$day} shift: {$saved}." : "Saved {$name}'s {$day} shift: {$saved}.";
                 }
                 if ($error !== '') {
-                    $reopen = 'shift';
+                    $reopen = $asSelf ? 'self' : 'shift';
                     $form   = ['userId' => $uid, 'shiftDate' => $shiftDate, 'date' => $dateRaw, 'startTime' => $fromRaw, 'endTime' => $toRaw];
                 }
             }
@@ -328,14 +352,15 @@ foreach ($shifts as $s) {
 
 $showNames = $showId === 0 && count($scheduled) > 1;
 
-// Days an employee could move one of their shifts to: the rest of its pay
-// week from today on, where they do not already work.  Memoised per shift,
-// since a moved shift shows twice.
-$targetsMemo = [];
-$moveTargets = function (array $s) use (&$targetsMemo, $db, $payWeekOf, $todayDate): array {
+// Days an employee could work one of their shifts on: its pay week from today
+// on, where no other shift of theirs is worked.  That includes the day it is on
+// now, for a change of times alone.  Memoised per shift, since a moved shift
+// shows twice.
+$daysMemo   = [];
+$dayChoices = function (array $s) use (&$daysMemo, $db, $payWeekOf, $todayDate): array {
     $key = $s['user_id'] . '/' . $s['shift_date'];
-    if (isset($targetsMemo[$key])) {
-        return $targetsMemo[$key];
+    if (isset($daysMemo[$key])) {
+        return $daysMemo[$key];
     }
     [$weekStart, $weekEnd] = $payWeekOf($s['shift_date']);
     $worked = [];
@@ -344,21 +369,22 @@ $moveTargets = function (array $s) use (&$targetsMemo, $db, $payWeekOf, $todayDa
             $worked[$other['date']] = true;
         }
     }
-    $targets = [];
+    $days = [];
     for ($d = new DateTimeImmutable($weekStart); $d->format('Y-m-d') <= $weekEnd; $d = $d->modify('+1 day')) {
         $ds = $d->format('Y-m-d');
-        if ($ds < $todayDate || $ds === $s['shift_date'] || isset($worked[$ds])
-            || ($s['state'] !== 'off' && $ds === $s['date'])) {
+        if ($ds < $todayDate || isset($worked[$ds])) {
             continue;
         }
-        $targets[] = ['date' => $ds, 'label' => scheduleFormatDate($ds)];
+        $days[] = ['date' => $ds, 'label' => scheduleFormatDate($ds) . ($ds === $s['shift_date'] ? ' (regular)' : '')];
     }
-    return $targetsMemo[$key] = $targets;
+    return $daysMemo[$key] = $days;
 };
 
 // One chip, used by both the grid and the phone list.  A button when this
 // user may change the shift, plain text otherwise.
-$chip = function (array $s, bool $long) use ($people, $labelOf, $shortOf, $colourOf, $showNames, $canManage, $canEdit, $meId, $selfBlock, $moveTargets): string {
+// Memoised as $dayChoices is, since a moved shift shows twice.
+$weekMemo = [];
+$chip = function (array $s, bool $long) use ($people, $labelOf, $shortOf, $colourOf, $showNames, $canManage, $canEdit, $meId, $selfBlock, $dayChoices, $weekHours, &$weekMemo): string {
     $uid  = $s['user_id'];
     $name = $showNames ? $shortOf[$uid] . ' · ' : '';
     $when = $long ? 'D, M j' : 'D';
@@ -393,7 +419,9 @@ $chip = function (array $s, bool $long) use ($people, $labelOf, $shortOf, $colou
         'regular'    => $reg,
     ];
     if ($asSelf) {
-        $data['targets'] = json_encode($moveTargets($real));
+        $key          = $uid . '/' . $real['shift_date'];
+        $data['days'] = json_encode($dayChoices($real));
+        $data['week'] = json_encode($weekMemo[$key] ??= $weekHours($real));
     }
     $attrs = '';
     foreach ($data as $k => $v) {
@@ -737,6 +765,8 @@ require __DIR__ . '/../app/partials/header.php';
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: .9rem 1.1rem;
     }
+    .field + .modal-grid { margin-top: .9rem; }
+    #self-week.error { margin: .6rem 0 .35rem; }
 
     .field { display: flex; flex-direction: column; }
     .field.full { grid-column: 1 / -1; }
@@ -807,9 +837,9 @@ require __DIR__ . '/../app/partials/header.php';
             Everyone's shifts.  Click a shift to change its day or times, or to give the day off.
             Set each person's regular week at the bottom of the page.
         <?php else: ?>
-            Everyone's shifts.  Click one of your own, from today on, to move it to another day in the
-            same week (it keeps its hours), to take the day off, or to put it back.  The admins get an
-            email when you do.
+            Everyone's shifts.  Click one of your own, from today on, to change its day within the same
+            week or its times, keeping the week to the hours you normally work; to take the day off; or
+            to put it back.  The admins get an email when you do.
         <?php endif; ?>
     </p>
 
@@ -1023,6 +1053,7 @@ require __DIR__ . '/../app/partials/header.php';
         </div>
         <form method="post" action="schedule.php" class="js-confirm-form" autocomplete="off">
             <div class="modal-body">
+                <div class="error" id="self-error" <?= ($error !== '' && $reopen === 'self') ? '' : 'hidden' ?>><?= h($error) ?></div>
                 <input type="hidden" name="_csrf"      value="<?= h($_SESSION['csrf_token']) ?>">
                 <input type="hidden" name="month"      value="<?= h($monthKey) ?>">
                 <input type="hidden" name="show"       value="<?= (int) $showId ?>">
@@ -1035,18 +1066,29 @@ require __DIR__ . '/../app/partials/header.php';
                 </div>
 
                 <div class="field">
-                    <span class="field-label">Move it to</span>
-                    <div class="choice-row" id="self-targets"></div>
-                    <div class="field-hint" id="self-no-targets" hidden>No other free day left in this pay week.</div>
-                    <div class="field-hint">It keeps its hours.  The admins get an email about any change.</div>
+                    <span class="field-label">Day</span>
+                    <div class="choice-row" id="self-days"></div>
+                    <div class="field-hint" id="self-no-days" hidden>No free day left in this pay week.</div>
                 </div>
+                <div class="modal-grid">
+                    <div class="field">
+                        <label for="self-start">From</label>
+                        <input type="time" id="self-start" name="start_time" required>
+                    </div>
+                    <div class="field">
+                        <label for="self-end">To</label>
+                        <input type="time" id="self-end" name="end_time" required>
+                    </div>
+                </div>
+                <div id="self-week"></div>
+                <div class="field-hint">The admins get an email about any change.</div>
             </div>
             <div class="modal-footer">
                 <button type="submit" class="btn-secondary btn-off" name="action" value="off" id="self-off" formnovalidate
                         data-confirm="Take this day off?  The admins will get an email.">Take the day off</button>
-                <button type="submit" class="btn-secondary spacer" name="action" value="putback" id="self-putback" formnovalidate>Put back</button>
+                <button type="submit" class="btn-secondary spacer" name="action" value="restore" id="self-restore" formnovalidate>Back to regular</button>
                 <button type="button" class="btn-secondary js-close">Cancel</button>
-                <button type="submit" class="btn-primary" name="action" value="move" id="self-move">Move</button>
+                <button type="submit" class="btn-primary" name="action" value="save" id="self-save">Save</button>
             </div>
         </form>
     </div>
@@ -1130,33 +1172,79 @@ require __DIR__ . '/../app/partials/header.php';
     });
 
     // ── Employee: one of their own shifts ──
+    var selfWeek = null;    // the open shift's week, from its data-week
+    var selfNoDays = false;
+
+    function minutesOf(hm) {
+        var m = /^(\d\d):(\d\d)/.exec(hm);
+        return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    }
+
+    // Matches scheduleFormatLength() in app/schedule.php.
+    function fmtLength(minutes) {
+        var h = Math.floor(minutes / 60), m = minutes % 60, parts = [];
+        if (h > 0) { parts.push(h + (h === 1 ? ' hour' : ' hours')); }
+        if (m > 0) { parts.push(m + (m === 1 ? ' minute' : ' minutes')); }
+        return parts.join(' ') || '0 hours';
+    }
+
+    // The week's total with the times as typed, and the warning the server
+    // would give, in the same words, while it is over.
+    function showWeek() {
+        var w = selfWeek;
+        var a = minutesOf(document.getElementById('self-start').value);
+        var b = minutesOf(document.getElementById('self-end').value);
+        var total = w.others + (a !== null && b !== null && b > a ? b - a : 0);
+        var over  = total - w.limit;
+        var cap   = w.limit > w.usual
+            ? 'the ' + fmtLength(w.limit) + ' already scheduled'
+            : 'the ' + fmtLength(w.usual) + ' you normally work';
+        var el = document.getElementById('self-week');
+        el.className   = over > 0 ? 'error' : 'field-hint';
+        el.textContent = over > 0
+            ? 'That would make this week ' + fmtLength(total) + ', over ' + cap + '.  Shorten this shift by ' +
+              fmtLength(over) + ', or shorten another day this week first.'
+            : 'This week: ' + fmtLength(total) + ' of ' + cap + '.';
+        document.getElementById('self-save').disabled = selfNoDays || over > 0;
+    }
+
+    ['self-start', 'self-end'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { el.addEventListener('input', showWeek); }
+    });
+
     function openSelf(d) {
         document.getElementById('self-title').textContent   = 'Your ' + d.shiftDay + ' shift';
         document.getElementById('self-shift-date').value    = d.shiftDate;
         document.getElementById('self-now').textContent     = d.now;
         document.getElementById('self-regular').textContent = d.regular;
 
-        var targets = JSON.parse(d.targets || '[]');
-        var box     = document.getElementById('self-targets');
+        // An off day starts from its own day, where it would come back.
+        var current = d.state === 'off' ? d.shiftDate : d.date;
+        var days    = JSON.parse(d.days || '[]');
+        var box     = document.getElementById('self-days');
         box.innerHTML = '';
-        targets.forEach(function (t) {
+        days.forEach(function (t) {
             var label = document.createElement('label');
             label.className = 'choice';
-            label.innerHTML = '<input type="radio" name="to_date" required value="' + escHtml(t.date) + '"> ' + escHtml(t.label);
+            label.innerHTML = '<input type="radio" name="date" required value="' + escHtml(t.date) + '"' +
+                (t.date === current ? ' checked' : '') + '> ' + escHtml(t.label);
             box.appendChild(label);
         });
-        document.getElementById('self-no-targets').hidden = targets.length > 0;
-        document.getElementById('self-move').disabled     = targets.length === 0;
-        document.getElementById('self-off').hidden        = d.state === 'off';
-        var putback = document.getElementById('self-putback');
-        putback.hidden      = d.state === 'regular' || d.state === 'changed';
-        putback.textContent = 'Put back on ' + d.shiftDay;
+        document.getElementById('self-no-days').hidden = days.length > 0;
+        document.getElementById('self-start').value    = d.startTime;
+        document.getElementById('self-end').value      = d.endTime;
+        document.getElementById('self-off').hidden     = d.state === 'off';
+        document.getElementById('self-restore').hidden = d.state === 'regular';
+        selfNoDays = days.length === 0;
+        selfWeek   = JSON.parse(d.week);
+        showWeek();
         openModal(document.getElementById('self-modal'));
     }
 
     document.querySelectorAll('.js-shift').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            clearError('shift-error');
+            clearError(CAN_MANAGE ? 'shift-error' : 'self-error');
             (CAN_MANAGE ? openShift : openSelf)(btn.dataset);
         });
     });
@@ -1172,6 +1260,20 @@ require __DIR__ . '/../app/partials/header.php';
             document.getElementById('shift-date').value  = f.date;
             document.getElementById('shift-start').value = f.startTime;
             document.getElementById('shift-end').value   = f.endTime;
+        }(<?= json_encode($form) ?>));
+    <?php elseif ($reopen === 'self'): ?>
+        (function (f) {
+            var btn = document.querySelector('.js-shift[data-shift-date="' + f.shiftDate + '"]');
+            if (!btn) { pageError.hidden = false; return; }
+            openSelf(btn.dataset);
+            document.getElementById('self-error').hidden = false;
+            document.querySelectorAll('#self-days input').forEach(function (r) { r.checked = r.value === f.date; });
+            document.getElementById('self-start').value = f.startTime;
+            document.getElementById('self-end').value   = f.endTime;
+            showWeek();
+            // A refusal over the week's hours is already the warning below.
+            var err = document.getElementById('self-error');
+            if (err.textContent === document.getElementById('self-week').textContent) { err.hidden = true; }
         }(<?= json_encode($form) ?>));
     <?php elseif ($reopen === 'regular'): ?>
         (function (f) {
