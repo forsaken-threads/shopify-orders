@@ -8,11 +8,6 @@ declare(strict_types=1);
  * admin, root.  Each role inherits everything the role below it can do,
  * plus its own additions.
  *
- *   basic_employee  — clock_in_out (placeholder for a future feature)
- *   data_entry      — + orders, bundles
- *   admin           — + reports, charts, manage_users
- *   root            — + shopify_install, masquerade, tools
- *
  * The PERMISSIONS_BY_ROLE map is the single source of truth: page and API
  * gates call userCan() / requirePermission() / requireApiPermission()
  * against a permission string and don't hard-code role names.  Adding a

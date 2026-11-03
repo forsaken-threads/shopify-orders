@@ -284,12 +284,6 @@ try {
 
 // ── Add role to users ────────────────────────────────────────────────────────
 //
-// Role-based permissions.  Four additive roles:
-//   basic_employee  — clock_in_out only (placeholder for future feature)
-//   data_entry      — + orders, bundles
-//   admin           — + reports, charts, manage_users
-//   root            — + shopify_install
-//
 // New rows default to basic_employee.  The seed step below promotes the two
 // historic accounts that previously had unrestricted access (username
 // 'root' and username 'admin') so the cut-over doesn't lock anyone out.
