@@ -24,8 +24,10 @@ declare(strict_types=1);
  * Requirements:
  *   - env.ini with the SHOPIFY_* and SMTP_* values, APP_BASE_URL and
  *     DISPUTE_ALERT_TO filled in.
- *   - shopify.ini written by install.php, from a visit made after
- *     read_shopify_payments_disputes joined its scope list.
+ *   - shopify.ini written by install.php, holding a token Shopify granted
+ *     read_shopify_payments_disputes.  That is two steps: declare the scope
+ *     in the app's configuration in Shopify as a new version and install that
+ *     version on the store, then visit /install.php as root.
  *
  * Exits 0 on success, 1 on configuration error, 2 when Shopify or SMTP refused
  * something.  Every run prints a summary line, so a log that has stopped
@@ -174,7 +176,7 @@ $data    = $listed['status'] === 200 ? json_decode($listed['body'], associative:
 
 if (!is_array($data) || !isset($data['disputes'])) {
     $say(sprintf(
-        'Could not read the dispute list from Shopify (HTTP %d).  A 403 or 404 means the token lacks read_shopify_payments_disputes: visit /install.php as root to approve it.',
+        'Could not read the dispute list from Shopify (HTTP %d).  A 403 or 404 means the token lacks read_shopify_payments_disputes: declare it in the app\'s configuration in Shopify as a new version, install that version, then visit /install.php as root.',
         $listed['status']
     ));
     $exitCode = 2;

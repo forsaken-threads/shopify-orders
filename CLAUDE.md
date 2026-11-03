@@ -51,6 +51,19 @@ framework), composer for the one vendored dep (`phpmailer`).
   built in PHP compares against it correctly.  That normalises rather than
   converting for display, so the rule above does not forbid it.
 
+## Shopify
+
+- **A new Admin API scope is two steps, and `/install.php` is the
+  second.**  Adding it to `$scopes` in `public/install.php` is not
+  enough: Shopify grants a scope only once the app's own configuration
+  in Shopify declares it, and consent without that issues a token
+  lacking it.  So the deploy step reads: declare the scope in the app's
+  configuration as a new version, install that version on the store,
+  then visit `/install.php` as root.  Write it whole in the commit's
+  deploy line and the changelog bullet.  `/install.php` names any scope
+  the stored token lacks, so a page naming one means the first step has
+  not happened.
+
 ## Permissions & auth
 
 - Source of truth: `app/permissions.php`.

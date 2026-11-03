@@ -12,11 +12,14 @@ declare(strict_types=1);
  *   1. Visit /install.php
  *        → if a working token already exists and holds every scope in
  *          $scopes, shows a status page.
+ *        → if it works but lacks a scope, names the missing ones and offers
+ *          consent behind a button.
  *        → otherwise redirects to the Shopify OAuth consent page.
  *   2. Merchant approves the app in Shopify admin.
  *        → Shopify redirects back to /install.php?code=…&hmac=…&shop=…
  *   3. The authorization code is exchanged for a permanent access token.
- *        → Token is written to shopify.ini in the project root.
+ *        → Token is written to shopify.ini in the project root, and the
+ *          browser is sent back to step 1 to report on it.
  *
  * Requires SHOPIFY_API_KEY, SHOPIFY_API_SECRET, and SHOPIFY_SHOP_DOMAIN
  * to be set in env.ini (or as real environment variables).
@@ -35,6 +38,9 @@ $iniPath    = $config['shopify_ini_path'];
 
 // write_inventory is for setting stock from the Out of Stock report, and
 // read_shopify_payments_disputes for the dispute alerts in app/disputes.php.
+// Shopify grants a scope only once the app's own configuration in Shopify
+// declares it, so adding one here also needs a new app version released and
+// installed there.  Consent alone issues a token without it.
 $scopes = ['read_products', 'read_orders', 'write_inventory', 'read_shopify_payments_disputes'];
 
 if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
@@ -46,6 +52,14 @@ if ($apiKey === '' || $apiSecret === '' || $shopDomain === '') {
 $forwardedProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
 $scheme = $forwardedProto !== '' ? strtolower(explode(',', $forwardedProto)[0]) : ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
 $callbackUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
+
+$authUrl = sprintf(
+    'https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s',
+    $shopDomain,
+    rawurlencode($apiKey),
+    rawurlencode(implode(',', $scopes)),
+    rawurlencode($callbackUrl)
+);
 
 // ── Shared layout helpers ─────────────────────────────────────────────────────
 
@@ -262,21 +276,20 @@ if (isset($_GET['code'])) {
         exit('Token was obtained but could not be written to ' . h($iniPath) . '. Check file-system permissions.');
     }
 
-    renderPage('Installation Complete', <<<HTML
-        <div class="card-icon icon-success">
-            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-        </div>
-        <h1>Installation complete</h1>
-        <p>The Shopify access token was successfully obtained and saved.</p>
-        <p>Your app is now authorized to call the Shopify Admin API.</p>
-        <a class="btn" href="orders.php">View pending orders</a>
-        <p class="meta">Token stored in <code>shopify.ini</code> &mdash; never commit this file.</p>
-    HTML);
+    // Shopify issues a token even when it withheld a scope, so this page does
+    // not report success itself: the pre-flight below judges the new token.
+    // The flag stops a token that fails its test call from going straight
+    // back to consent, which would loop until the browser gave up.
+    $_SESSION['install_token_minted'] = true;
+    header('Location: install.php');
+    exit;
 }
 
 // ── Token pre-flight check ────────────────────────────────────────────────────
 
 $existingToken = $config['shopify_access_token'];
+$justMinted    = !empty($_SESSION['install_token_minted']);
+unset($_SESSION['install_token_minted']);
 
 if ($existingToken !== '') {
     // Test the token with a lightweight Admin API call.
@@ -296,7 +309,7 @@ if ($existingToken !== '') {
 
     // A token minted before a scope was added to $scopes still answers
     // shop.json, so it would read as working here while every call needing
-    // the new scope is refused.  Anything missing sends this visit to consent.
+    // the new scope is refused.
     $granted = [];
     if ($tokenWorking) {
         $scopesResponse = @file_get_contents(sprintf('https://%s/admin/oauth/access_scopes.json', $shopDomain), false, $testContext);
@@ -306,7 +319,9 @@ if ($existingToken !== '') {
         }
     }
 
-    if ($tokenWorking && array_diff($scopes, $granted) === []) {
+    $missing = array_values(array_diff($scopes, $granted));
+
+    if ($tokenWorking && $missing === []) {
         renderPage('Installation', <<<HTML
             <div class="card-icon icon-success">
                 <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -318,18 +333,39 @@ if ($existingToken !== '') {
         HTML);
     }
 
-    // Token exists but failed the test or lacks a scope — fall through to OAuth flow below.
+    $warningIcon = '<div class="card-icon icon-warning"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>';
+
+    // Consent grants a missing scope only once the app's configuration
+    // declares it, so this asks rather than redirecting: otherwise every visit
+    // would mint another token without it.
+    if ($tokenWorking) {
+        $missingList = implode(', ', array_map(static fn(string $s): string => '<code>' . h($s) . '</code>', $missing));
+        $authHref    = h($authUrl);
+        renderPage('Missing Shopify Permissions', <<<HTML
+            {$warningIcon}
+            <h1>Shopify has not granted every permission</h1>
+            <p>The stored access token works, but it does not hold {$missingList}.</p>
+            <p>Shopify grants a permission only once the app&rsquo;s own configuration declares it.  In Shopify, add the missing scopes to the app&rsquo;s configuration, release that as a new version, and install the version on the store.  Then approve here.</p>
+            <a class="btn" href="{$authHref}">Approve in Shopify</a>
+            <p class="meta">Approving before that version is installed issues another token without them, and this page comes back.</p>
+        HTML);
+    }
+
+    if ($justMinted) {
+        $failure = h($testResponse === false ? 'no response' : $testStatusLine);
+        renderPage('Token Not Working', <<<HTML
+            {$warningIcon}
+            <h1>Shopify issued a token that does not work</h1>
+            <p>A new access token was saved to <code>shopify.ini</code>, but a test call to the Admin API failed: {$failure}.</p>
+            <p>Asking Shopify for another token will not help until that is fixed, so this page has stopped here.  Check <code>SHOPIFY_SHOP_DOMAIN</code> and <code>SHOPIFY_API_VERSION</code> in <code>env.ini</code>, then test again.</p>
+            <a class="btn" href="install.php">Test again</a>
+        HTML);
+    }
+
+    // The token failed its test call — fall through to OAuth flow below.
 }
 
 // ── Step 1: Redirect to Shopify OAuth consent page ───────────────────────────
-
-$authUrl = sprintf(
-    'https://%s/admin/oauth/authorize?client_id=%s&scope=%s&redirect_uri=%s',
-    $shopDomain,
-    rawurlencode($apiKey),
-    rawurlencode(implode(',', $scopes)),
-    rawurlencode($callbackUrl)
-);
 
 header('Location: ' . $authUrl);
 exit;
