@@ -582,6 +582,15 @@ require __DIR__ . '/../app/partials/header.php';
     .oos-set-done { color: #166534; font-weight: 600; }
     .oos-set-note { font-size: .8rem; color: #888; }
 
+    /* ── Stalled Shipments ── */
+    .st-table a { color: #1a1a2e; text-decoration-color: #c5c9d3; }
+    .st-table a:hover { text-decoration-color: currentColor; }
+    .st-table a.st-order { font-weight: 700; text-decoration: none; }
+    .st-table a.st-order:hover { text-decoration: underline; }
+    .st-table a.st-email { display: block; font-size: .8rem; color: #888; }
+    .st-unscanned { color: #c0392b; font-weight: 600; }
+    .st-since { display: block; font-size: .8rem; color: #888; }
+
     /* ── Set-stock modal ── */
     .modal-overlay {
         position: fixed;
@@ -1177,6 +1186,73 @@ require __DIR__ . '/../app/partials/header.php';
                                 </tr>
                             </thead>
                             <tbody id="oos-rows"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div><!-- /accordion-body -->
+        </div><!-- /card -->
+
+        <!-- ── Card 7: Stalled Shipments ── -->
+        <div class="accordion-card" id="card-stalled-shipments">
+            <div class="accordion-header" role="button" aria-expanded="false"
+                 aria-controls="body-stalled-shipments"
+                 onclick="toggleAccordion('card-stalled-shipments')">
+                <div class="accordion-header-icon">
+                    <!-- truck icon -->
+                    <svg viewBox="0 0 24 24">
+                        <rect x="1" y="3" width="15" height="13"/>
+                        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                        <circle cx="5.5" cy="18.5" r="2.5"/>
+                        <circle cx="18.5" cy="18.5" r="2.5"/>
+                    </svg>
+                </div>
+                <div class="accordion-header-text">
+                    <h2>Stalled Shipments</h2>
+                    <p>Packages shipped in the last 30 days that tracking still does not show delivered, oldest first.</p>
+                </div>
+                <div class="accordion-chevron">
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+            </div>
+
+            <div class="accordion-body" id="body-stalled-shipments">
+
+                <div class="tc-controls">
+                    <label class="tc-control-label" for="st-days">Not delivered after</label>
+                    <input type="number" id="st-days" class="tc-limit-input"
+                           value="7" min="1" max="29" step="1">
+                    <span class="tc-control-label">days</span>
+                    <button type="button" class="tc-load-btn" id="st-load-btn">Load</button>
+                </div>
+
+                <!-- Loading -->
+                <div class="lookup-loading" id="st-loading">
+                    <div class="spinner"></div>
+                    Reading tracking…
+                </div>
+
+                <!-- Error -->
+                <div class="lookup-error" id="st-error"></div>
+
+                <!-- Results -->
+                <div class="results-area" id="st-results">
+                    <div class="tc-results-header">
+                        <span class="tc-results-count" id="st-count"></span>
+                    </div>
+                    <div class="tc-table-wrap">
+                        <table class="tc-table st-table">
+                            <thead>
+                                <tr>
+                                    <th>Order</th>
+                                    <th>Customer</th>
+                                    <th class="tc-col-num">Shipped</th>
+                                    <th class="tc-col-num">Days</th>
+                                    <th>Status</th>
+                                    <th>Tracking</th>
+                                </tr>
+                            </thead>
+                            <tbody id="st-rows"></tbody>
                         </table>
                     </div>
                 </div>
@@ -2193,6 +2269,113 @@ require __DIR__ . '/../app/partials/header.php';
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !setModal.hidden) closeSet();
     });
+}());
+</script>
+
+<script>
+(function () {
+    'use strict';
+
+    // escHtml and apiUrl are provided by app/partials/header.php.
+
+    // ── Stalled Shipments ───────────────────────────────────────────────────────
+
+    const daysEl    = document.getElementById('st-days');
+    const loadBtn   = document.getElementById('st-load-btn');
+    const loadingEl = document.getElementById('st-loading');
+    const errorEl   = document.getElementById('st-error');
+    const resultsEl = document.getElementById('st-results');
+    const countEl   = document.getElementById('st-count');
+    const rowsEl    = document.getElementById('st-rows');
+
+    // A label made but never scanned by the carrier.  These are the packages
+    // USPS cannot search for, so they are marked apart from the ones in transit.
+    const UNSCANNED = [null, 'label_purchased', 'label_printed', 'confirmed'];
+
+    function fmtInt(n) { return Number(n).toLocaleString(); }
+
+    // new Date('2026-08-01') is midnight UTC, which is still 31 July anywhere
+    // west of Greenwich, so the parts go in as local time instead.
+    function fmtDate(iso) {
+        const p = iso.split('-').map(Number);
+        return new Date(p[0], p[1] - 1, p[2])
+            .toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function statusHtml(status) {
+        const label = status === null ? 'No status'
+            : status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
+        return UNSCANNED.indexOf(status) === -1 ? escHtml(label)
+            : '<span class="st-unscanned" title="No carrier scan yet">' + escHtml(label) + '</span>';
+    }
+
+    function sinceHtml(s) {
+        const n = s.status_days;
+        return '<span class="st-since">since ' + fmtDate(s.status_since) + ' · ' +
+            (n === 0 ? 'under a day' : fmtInt(n) + (n === 1 ? ' day' : ' days')) + '</span>';
+    }
+
+    function load() {
+        loadBtn.disabled = true;
+        errorEl.classList.remove('visible');
+        resultsEl.classList.remove('visible');
+        loadingEl.classList.add('visible');
+
+        fetch(apiUrl('stalled-shipments.php?days=' + encodeURIComponent(daysEl.value)))
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (d) { return Promise.reject(d.error || 'Server error'); });
+                return r.json();
+            })
+            .then(function (data) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                render(data);
+            })
+            .catch(function (msg) {
+                loadingEl.classList.remove('visible');
+                loadBtn.disabled = false;
+                errorEl.textContent = typeof msg === 'string' ? msg : 'Failed to load stalled shipments.';
+                errorEl.classList.add('visible');
+            });
+    }
+
+    function render(data) {
+        const list      = data.shipments || [];
+        const unscanned = list.filter(function (s) { return UNSCANNED.indexOf(s.status) !== -1; }).length;
+
+        countEl.textContent = fmtInt(list.length) + ' package' + (list.length === 1 ? '' : 's') +
+            ' · ' + fmtInt(unscanned) + ' never scanned';
+
+        if (list.length === 0) {
+            rowsEl.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:1.5rem;">' +
+                'No package shipped in the last ' + data.lookback_days + ' days has gone ' + data.days +
+                ' days without being delivered.</td></tr>';
+        } else {
+            let html = '';
+            list.forEach(function (s) {
+                const number = escHtml(s.tracking_number);
+                html += '<tr>' +
+                    '<td><a class="st-order" href="order.php?id=' + s.order_id + '">#' + escHtml(s.order_number) + '</a></td>' +
+                    '<td>' + escHtml(s.customer_name) +
+                        (s.customer_email ? '<a class="st-email" href="mailto:' + escHtml(s.customer_email) + '">' +
+                            escHtml(s.customer_email) + '</a>' : '') + '</td>' +
+                    '<td class="tc-col-num">' + fmtDate(s.shipped) + '</td>' +
+                    '<td class="tc-col-num">' + fmtInt(s.days) + '</td>' +
+                    '<td>' + statusHtml(s.status) + sinceHtml(s) + '</td>' +
+                    '<td>' + (s.tracking_url
+                        ? '<a href="' + escHtml(s.tracking_url) + '" target="_blank" rel="noopener">' + number + '</a>'
+                        : number) + '</td>' +
+                    '</tr>';
+            });
+            rowsEl.innerHTML = html;
+        }
+        resultsEl.classList.add('visible');
+    }
+
+    daysEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') load();
+    });
+    loadBtn.addEventListener('click', load);
 }());
 </script>
 
