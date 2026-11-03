@@ -18,6 +18,18 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.35.0',
+        'date'    => '2026-11-03',
+        'title'   => 'Change the times of your own shifts',
+        'notes'   => [
+            'On the Schedule page, clicking one of your own shifts now lets you change its times as well as its day.  Pick the day, set From and To, and press Save.',
+            'Your week can add up to the hours you normally work, or fewer.  To make one day longer, make another day in the same week shorter first.  The box shows the week\'s total as you type, and says how much to take off if it is over.',
+            'The day still has to be in the same pay week, today or later, and not a day you already work.',
+            'Back to regular puts the shift back on its own day at its regular times.',
+            'The admins still get an email about every change, and it now says when the times changed.',
+        ],
+    ],
+    [
         'version' => '1.34.0',
         'date'    => '2026-11-03',
         'title'   => 'See which packages are stuck in the mail',
