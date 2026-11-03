@@ -18,6 +18,19 @@ declare(strict_types=1);
 
 return [
     [
+        'version' => '1.34.0',
+        'date'    => '2026-11-03',
+        'title'   => 'See which packages are stuck in the mail',
+        'notes'   => [
+            'Reports has a new Stalled Shipments card.  It lists packages shipped in the last 30 days that tracking still does not show as delivered, oldest first.',
+            'Set Not delivered after to how many days a package has to be on its way before it is listed (7 to start, up to 29), then press Load.',
+            'Each package shows the order, the customer with a link to email them, the day it shipped and how many days ago that was, its tracking status, and the tracking number, which opens the tracking page.',
+            'Under each status is when it last changed, such as since Oct 22, 2026 · 11 days.  Out for delivery since this morning is normal; out for delivery for three days is not.  A package can be scanned without its status changing, so In transit for a week means no new status for a week, not always no scans.',
+            'A status in red, such as Label printed or Confirmed, means the carrier has not scanned the package yet.  The count at the top says how many there are.',
+            'Packages with no tracking number, and orders that were cancelled or refunded in full, are not listed.',
+        ],
+    ],
+    [
         'version' => '1.33.0',
         'date'    => '2026-10-19',
         'title'   => 'A weekly schedule in place of Availability',
