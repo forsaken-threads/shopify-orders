@@ -183,6 +183,12 @@ next model on, with nothing to announce the change.  Don't re-pin it.
   trailing period, a date range — confirm the window actually contains
   rows.  An empty window and a correct answer look identical in the
   output, and a check that cannot fail reads exactly like one that passed.
+- **Set `MAIL_BLACKHOLE` before testing anything that sends mail.**  That
+  copy holds real customers' and staff addresses, and a local `env.ini`
+  can hold working SMTP settings, so a schedule change or password reset
+  made while testing emails a real person.  With the key set, every email
+  goes to that one address instead.  It must be in the `env.ini` the code
+  under test reads, and a scratch copy of the tree has its own.
 - **Default to editing existing files.**  Don't create README / notes /
   scratch files unless asked.  CLAUDE.md is the only meta-doc that
   belongs in the repo root.
