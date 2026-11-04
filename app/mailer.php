@@ -18,6 +18,9 @@ declare(strict_types=1);
  * $urgent marks the message high priority, for the dispute alerts in
  * app/disputes.php.
  *
+ * mail_blackhole, when set, receives every message in place of its recipient.
+ * This is the only place the app sends mail, so nothing gets past it.
+ *
  * Returns true on successful queue, false on transport failure.  The error
  * detail is written to error_log() so callers don't need to surface SMTP
  * internals to end users.
@@ -83,7 +86,16 @@ function sendMail(
             (string) ($config['smtp_from_email'] ?? ''),
             (string) ($config['smtp_from_name']  ?? '')
         );
-        $mail->addAddress($toEmail, $toName);
+        $blackhole = (string) ($config['mail_blackhole'] ?? '');
+        if ($blackhole === '') {
+            $mail->addAddress($toEmail, $toName);
+        } else {
+            // The recipient is never added, so a mistyped blackhole fails the
+            // send (PHPMailer throws on an invalid address) instead of
+            // reaching them.  Who it was for rides in the display name.
+            $mail->addAddress($blackhole, $toName !== '' ? "{$toName} ({$toEmail})" : $toEmail);
+            $mail->addCustomHeader('X-Blackhole-Original-To', $toEmail);
+        }
 
         if ($urgent) {
             // Mail clients disagree about which of these they read.

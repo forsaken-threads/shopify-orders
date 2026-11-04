@@ -151,6 +151,10 @@ return [
     })(),
     'smtp_from_email'        => (string) (getenv('SMTP_FROM_EMAIL')        ?: ''),
     'smtp_from_name'         => (string) (getenv('SMTP_FROM_NAME')         ?: 'Cent Notes'),
+    // Every outbound email goes to this one address instead, for a local copy
+    // of production, whose addresses belong to real people.  Blank or absent
+    // sends mail where it is addressed.
+    'mail_blackhole'         => trim((string) (getenv('MAIL_BLACKHOLE')    ?: '')),
     // Absolute base URL of this deployment (no trailing slash).  Used to build
     // password-reset links in outgoing email, where relative URLs aren't valid,
     // and the address Shopify delivers dispute webhooks to.
